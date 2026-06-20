@@ -3,7 +3,7 @@
 ; Run: iscc build\inno_setup.iss
 
 #define MyAppName "Oligolia"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.3.0"
 #define MyAppPublisher "Oligolia Project"
 #define MyAppURL "https://github.com/oligolia/oligolia"
 #define MyAppExeName "Oligolia.exe"

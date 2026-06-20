@@ -34,10 +34,17 @@ if [ "$DRY_RUN" = "--dry-run" ]; then
     exit 0
 fi
 
-# ── 1. Bump version.py ──────────────────────────────────────────────────────
-echo "→ Bumping version.py to $NEW_VERSION…"
+# ── 1. Bump version.py (single source of truth — spec/ISS/package.json all read from here) ──
+echo "→ Bumping version.py  $CURRENT → $NEW_VERSION…"
 sed -i '' "s/VERSION = \".*\"/VERSION = \"$NEW_VERSION\"/" version.py
-grep "VERSION" version.py
+
+# Keep frontend package.json in sync (cosmetic, doesn't affect the build)
+sed -i '' "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" frontend/package.json
+
+# Keep Inno Setup in sync (it doesn't read version.py)
+sed -i '' "s/#define MyAppVersion \".*\"/#define MyAppVersion \"$NEW_VERSION\"/" build/inno_setup.iss
+
+echo "  version.py     → $(grep 'VERSION = ' version.py)"
 
 # ── 2. Build locally (macOS DMG) ────────────────────────────────────────────
 echo "→ Building macOS app + DMG…"
@@ -52,7 +59,7 @@ echo "→ Built: $DMG ($(du -sh "$DMG" | cut -f1))"
 
 # ── 3. Commit + tag ─────────────────────────────────────────────────────────
 echo "→ Committing version bump…"
-git add version.py build/oligolia.spec Makefile
+git add version.py frontend/package.json build/inno_setup.iss
 git commit -m "Release v$NEW_VERSION
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"

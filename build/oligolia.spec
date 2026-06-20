@@ -11,6 +11,8 @@ import os
 from pathlib import Path
 
 project_root = str(Path(SPECPATH).parent)
+sys.path.insert(0, project_root)
+from version import VERSION  # single source of truth
 
 block_cipher = None
 
@@ -159,7 +161,7 @@ if sys.platform == "darwin":
         name="Oligolia.app",
         icon=os.path.join(project_root, "assets", "icon.icns"),
         bundle_identifier="com.oligolia.geneplatform",
-        version="0.1.0",
+        version=VERSION,
         info_plist={
             "NSPrincipalClass": "NSApplication",
             "NSAppleScriptEnabled": False,

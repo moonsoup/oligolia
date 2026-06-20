@@ -21,8 +21,9 @@ from gui.main_window import MainWindow
 
 def main() -> None:
     app = QApplication(sys.argv)
+    from version import VERSION
     app.setApplicationName("Oligolia")
-    app.setApplicationVersion("0.1.0")
+    app.setApplicationVersion(VERSION)
     app.setOrganizationName("Oligolia")
 
     # Use a clean system font — QFont.setFamily takes a single family name
