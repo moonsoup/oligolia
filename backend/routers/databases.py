@@ -98,12 +98,14 @@ def search(req: SearchRequest) -> SearchResponse:
 
 @router.get("/ncbi/gene/{gene_id}/sequence")
 def fetch_ncbi_gene_sequence(gene_id: str, format: str = Query("fasta", enum=["fasta", "gb"])) -> dict:
-    """Fetch nucleotide sequence for an NCBI gene ID."""
+    """Fetch mRNA sequence for an NCBI Gene UID (converts Gene UID → RefSeq nuccore first)."""
     try:
-        if format == "fasta":
-            text = _ncbi.fetch_fasta(gene_id)
-        else:
-            text = _ncbi.fetch_nucleotide(gene_id)
+        text = _ncbi.fetch_fasta_for_gene(gene_id)
+        if format == "gb":
+            # Re-fetch in GenBank format using the resolved nuccore ID
+            nuccore_ids = _ncbi.gene_uid_to_refseq_rna(gene_id)
+            if nuccore_ids:
+                text = _ncbi.fetch_nucleotide(nuccore_ids[0])
         return {"gene_id": gene_id, "format": format, "content": text}
     except Exception as e:
         raise HTTPException(502, f"NCBI fetch failed: {e}")

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Oligolia — Gene Editing Platform</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<!-- ── Nav ──────────────────────────────────────────────────────────────── -->
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">🧬 Oligolia</a>
+    <ul>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#download">Download</a></li>
+      <li><a href="https://github.com/moonsoup/oligolia/issues/new?template=feature_request.yml" target="_blank">Request Feature</a></li>
+      <li><a href="https://github.com/moonsoup/oligolia/issues/new?template=bug_report.yml" target="_blank">Report Bug</a></li>
+      <li><a href="#donate" class="btn-donate">❤ Donate</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ── Hero ─────────────────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="badge">Open Source · Free Forever</div>
+    <h1>Gene editing for everyone</h1>
+    <p class="hero-sub">
+      Search NCBI, Ensembl, UniProt and 6 other databases. Design CRISPR guides.
+      Align sequences. Annotate variants. All offline, all on your desktop.
+    </p>
+    <div class="hero-btns">
+      <a href="#download" class="btn-primary">Download Free</a>
+      <a href="https://github.com/moonsoup/oligolia" class="btn-secondary" target="_blank">View Source</a>
+    </div>
+    <div class="hero-meta">Windows · macOS · Linux &nbsp;·&nbsp; No Python required</div>
+
+    <!-- Screenshot placeholder -->
+    <div class="screenshot-wrap">
+      <div class="screenshot-ui">
+        <div class="ui-sidebar">
+          <div class="ui-tab active">🧬 Sequences</div>
+          <div class="ui-tab">🔍 DB Search</div>
+          <div class="ui-tab">✂️ CRISPR</div>
+          <div class="ui-tab">↔ Alignment</div>
+          <div class="ui-tab">🔩 Primers</div>
+          <div class="ui-tab">🔬 Variants</div>
+        </div>
+        <div class="ui-main">
+          <div class="ui-seq">ATGGTGCACCTGACT<span class="hl-g">G</span>A<span class="hl-g">GG</span>A<span class="hl-r">T</span><span class="hl-g">G</span>A<span class="hl-a">A</span>A<span class="hl-g">G</span><span class="hl-r">T</span><span class="hl-c">C</span><span class="hl-r">T</span><span class="hl-g">G</span><span class="hl-c">CC</span><span class="hl-g">G</span><span class="hl-r">T</span><span class="hl-r">T</span><span class="hl-a">A</span><span class="hl-c">C</span><span class="hl-r">T</span><span class="hl-g">G</span><span class="hl-c">CC</span><span class="hl-c">C</span><span class="hl-r">T</span><span class="hl-g">G</span><span class="hl-r">T</span><span class="hl-g">GGG</span><span class="hl-g">G</span><span class="hl-c">C</span><span class="hl-a">A</span><span class="hl-a">A</span><span class="hl-g">G</span><span class="hl-g">G</span><span class="hl-r">T</span><span class="hl-g">G</span><span class="hl-a">A</span><span class="hl-a">A</span><span class="hl-c">C</span></div>
+          <div class="ui-info"><span class="tag dna">DNA</span> HBB · 69 bp · GC: 57.1%</div>
+          <div class="ui-crispr">
+            <div class="guide">CAACCTCAGGCGGCTCATAG <span class="pam">NGG</span> <span class="score">Score 0.74 ▓▓▓▓▓▓▓░</span></div>
+            <div class="guide">CCAACCTCAGGCGGCTCATA <span class="pam">NGG</span> <span class="score">Score 0.71 ▓▓▓▓▓▓▓░</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Stats ─────────────────────────────────────────────────────────────── -->
+<section class="stats">
+  <div class="stats-inner">
+    <div class="stat"><span>8</span><label>Database integrations</label></div>
+    <div class="stat"><span>7+</span><label>File formats</label></div>
+    <div class="stat"><span>70</span><label>Tests passing</label></div>
+    <div class="stat"><span>0</span><label>Python install needed</label></div>
+  </div>
+</section>
+
+<!-- ── Features ──────────────────────────────────────────────────────────── -->
+<section class="features" id="features">
+  <div class="section-inner">
+    <h2>Everything a bioinformatician needs</h2>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feat-icon">🔍</div>
+        <h3>Multi-DB Search</h3>
+        <p>Search NCBI Gene, Ensembl, UniProt, KEGG, Reactome, gnomAD, STRING, and PDB simultaneously. Load sequences directly into the editor.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">✂️</div>
+        <h3>CRISPR Design</h3>
+        <p>Design guide RNAs for SpCas9, Cas9-HF, AsCas12a, and LwaCas13a. Doench on-target scoring, PAM detection on both strands.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">✏️</div>
+        <h3>Sequence Editor</h3>
+        <p>Insert, delete, replace, reverse complement, translate, transcribe. IUPAC-aware motif search. Color-coded by nucleotide or amino acid property.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">↔</div>
+        <h3>Alignment</h3>
+        <p>Needleman-Wunsch and Smith-Waterman pairwise alignment. Multiple sequence alignment via MUSCLE with identity matrix.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">🔬</div>
+        <h3>Variant Analysis</h3>
+        <p>VCF viewer with ClinVar and gnomAD annotation. Filter by gene, chromosome, or allele. Pathogenicity color-coding.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">🧪</div>
+        <h3>Protein Analysis</h3>
+        <p>Molecular weight, isoelectric point, extinction coefficient, GRAVY, instability index, signal peptide prediction, ORF finder.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">🔩</div>
+        <h3>Primer Design</h3>
+        <p>PCR primer pairs with Tm, GC content, and product size constraints. Restriction enzyme site mapping for 20 enzymes.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">🗺️</div>
+        <h3>Pathway Analysis</h3>
+        <p>Reactome pathway enrichment, KEGG pathway viewer, STRING protein interaction networks.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Download ───────────────────────────────────────────────────────────── -->
+<section class="download" id="download">
+  <div class="section-inner">
+    <h2>Download Oligolia</h2>
+    <p class="section-sub">Free and open source. No Python installation required.</p>
+    <div class="dl-cards">
+      <div class="dl-card">
+        <div class="platform-icon">🍎</div>
+        <h3>macOS</h3>
+        <p>macOS 12+ · Apple Silicon &amp; Intel</p>
+        <a href="https://github.com/moonsoup/oligolia/releases/latest" class="btn-dl">Download .dmg</a>
+        <small>Open DMG → drag to Applications</small>
+      </div>
+      <div class="dl-card featured">
+        <div class="platform-icon">🪟</div>
+        <h3>Windows</h3>
+        <p>Windows 10/11 · 64-bit</p>
+        <a href="https://github.com/moonsoup/oligolia/releases/latest" class="btn-dl">Download Installer</a>
+        <small>Run Setup.exe → Next → Finish</small>
+      </div>
+      <div class="dl-card">
+        <div class="platform-icon">🐧</div>
+        <h3>Linux</h3>
+        <p>Ubuntu 20.04+ · x86_64</p>
+        <a href="https://github.com/moonsoup/oligolia/releases/latest" class="btn-dl">Download AppImage</a>
+        <small>chmod +x → double-click</small>
+      </div>
+    </div>
+    <p class="update-note">⚡ Already installed? Use <strong>Help → Check for Updates</strong> — patches are ~11 MB, not 260 MB.</p>
+  </div>
+</section>
+
+<!-- ── Donate ─────────────────────────────────────────────────────────────── -->
+<section class="donate" id="donate">
+  <div class="section-inner">
+    <h2>Support Oligolia</h2>
+    <p class="section-sub">
+      Oligolia is free and always will be. Donations fund server costs,
+      database API fees, and developer time to add new features.
+    </p>
+    <div class="donate-options">
+      <a href="https://github.com/sponsors/moonsoup" target="_blank" class="donate-btn github-sponsor">
+        ❤ GitHub Sponsors
+      </a>
+      <a href="https://ko-fi.com/moonsoup" target="_blank" class="donate-btn kofi">
+        ☕ Ko-fi
+      </a>
+      <a href="https://www.paypal.com/donate?business=moonsoup%40gmail.com&item_name=Oligolia+Gene+Platform" target="_blank" class="donate-btn paypal">
+        💳 PayPal
+      </a>
+    </div>
+    <p class="donate-note">All donations go directly to project development. Thank you!</p>
+  </div>
+</section>
+
+<!-- ── Bug tracker / feature requests ────────────────────────────────────── -->
+<section class="tracker" id="tracker">
+  <div class="section-inner">
+    <h2>Bugs &amp; Feature Requests</h2>
+    <p class="section-sub">
+      Found a bug? Have an idea? The tracker is open — all issues are reviewed
+      weekly and prioritized.
+    </p>
+    <div class="tracker-btns">
+      <a href="https://github.com/moonsoup/oligolia/issues/new?template=bug_report.yml" target="_blank" class="tracker-btn bug">
+        🐛 Report a Bug
+      </a>
+      <a href="https://github.com/moonsoup/oligolia/issues/new?template=feature_request.yml" target="_blank" class="tracker-btn feat">
+        💡 Request a Feature
+      </a>
+      <a href="https://github.com/moonsoup/oligolia/issues" target="_blank" class="tracker-btn view">
+        📋 View All Issues
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ────────────────────────────────────────────────────────────── -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo">🧬 Oligolia</div>
+    <div class="footer-links">
+      <a href="https://github.com/moonsoup/oligolia" target="_blank">GitHub</a>
+      <a href="https://github.com/moonsoup/oligolia/releases" target="_blank">Releases</a>
+      <a href="https://github.com/moonsoup/oligolia/issues" target="_blank">Issues</a>
+      <a href="https://github.com/moonsoup/oligolia/blob/main/LICENSE" target="_blank">MIT License</a>
+    </div>
+    <div class="footer-copy">© 2026 Oligolia Project · Built with Biopython, PyQt6, FastAPI</div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,50 @@
+name: Weekly Issue Digest
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'      # Every Monday at 09:00 UTC
+  workflow_dispatch:           # Also triggerable manually from GitHub UI
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  digest:
+    name: Compile and email issue digest
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install httpx anthropic
+
+      - name: Generate digest
+        id: digest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python scripts/generate_digest.py
+
+      - name: Send email digest
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "Oligolia Issue Digest — ${{ steps.digest.outputs.date }}"
+          to: moonsoup@gmail.com
+          from: "Oligolia Bot <${{ secrets.SMTP_USER }}>"
+          html_body: file://digest_output.html
+          ignore_cert: false
+
+      - name: Post digest as pinned issue comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/post_digest_issue.py

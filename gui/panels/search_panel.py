@@ -238,13 +238,21 @@ class SearchPanel(QWidget):
         db = result.get("database", "")
         acc = result.get("accession", "")
         if db == "ncbi_gene" and acc:
-            fasta_text = self._ncbi.fetch_fasta(acc)
+            # acc is a Gene UID — must convert to nuccore via elink first
+            fasta_text = self._ncbi.fetch_fasta_for_gene(acc)
             lines = fasta_text.splitlines()
+            # FASTA header contains the actual accession (e.g. NM_000795.4)
+            header = next((ln for ln in lines if ln.startswith(">")), "")
+            nuccore_acc = header[1:].split()[0] if header else acc
             seq_str = "".join(ln for ln in lines if not ln.startswith(">"))
             return Sequence(
-                id=acc, name=result.get("name", acc),
-                description=result.get("description", ""),
-                seq=seq_str.upper(), molecule_type=MoleculeType.DNA, accession=acc,
+                id=nuccore_acc,
+                name=result.get("name", nuccore_acc),
+                description=result.get("description", header[1:] if header else ""),
+                seq=seq_str.upper(),
+                molecule_type=MoleculeType.DNA,
+                accession=nuccore_acc,
+                source_db="ncbi",
             )
         if db == "ensembl" and acc:
             data = self._ensembl.sequence_id(acc, seq_type="cdna")

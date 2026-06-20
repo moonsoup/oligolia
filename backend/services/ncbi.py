@@ -75,6 +75,31 @@ class NCBIClient:
 
     # ── Convenience ──────────────────────────────────────────────────────────
 
+    def gene_uid_to_refseq_rna(self, gene_uid: str) -> list[str]:
+        """Convert an NCBI Gene UID to RefSeq mRNA nuccore UIDs via elink."""
+        result = self.elink("gene", "nuccore", [gene_uid])
+        for linkset in result.get("linksets", []):
+            for lslink in linkset.get("linksetdbs", []):
+                if lslink.get("linkname") == "gene_nuccore_refseqrna":
+                    return [str(i) for i in lslink.get("links", [])]
+        # Fallback: any nuccore link
+        for linkset in result.get("linksets", []):
+            for lslink in linkset.get("linksetdbs", []):
+                if lslink.get("linkname") == "gene_nuccore":
+                    links = [str(i) for i in lslink.get("links", [])]
+                    return links[:1]  # just the first to avoid huge genomic records
+        return []
+
+    def fetch_fasta_for_gene(self, gene_uid: str) -> str:
+        """Fetch RefSeq mRNA FASTA for a Gene UID (handles the Gene UID → nuccore conversion)."""
+        nuccore_ids = self.gene_uid_to_refseq_rna(gene_uid)
+        if not nuccore_ids:
+            raise ValueError(
+                f"No RefSeq mRNA records found for Gene UID {gene_uid}. "
+                "The gene may not have an mRNA sequence in NCBI."
+            )
+        return self.efetch("nucleotide", nuccore_ids[:1], rettype="fasta", retmode="text")
+
     def search_genes(self, query: str, organism: str = "Homo sapiens", max_results: int = 20) -> list[dict]:
         term = f"{query}[Gene Name] AND {organism}[Organism]"
         result = self.esearch("gene", term, retmax=max_results)
