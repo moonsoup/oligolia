@@ -55,13 +55,28 @@ def test_translate(client: TestClient) -> None:
 
 
 def test_translate_hbb(client: TestClient, hbb_fasta: str) -> None:
-    """Translate real HBB coding sequence start — first codon is Met."""
+    """Translate real HBB CDS — must match actual beta-globin N-terminus."""
     hbb_cds = "ATGGTGCACCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTGGATGAA"
-    client.post("/sequences/", json={"id": "hbb_cds", "seq": hbb_cds, "molecule_type": "DNA"})
-    r = client.post("/sequences/hbb_cds/edit", json={"operation": "translate"})
+    client.post("/sequences/", json={"id": "hbb_cds2", "seq": hbb_cds, "molecule_type": "DNA"})
+    r = client.post("/sequences/hbb_cds2/edit", json={"operation": "translate"})
     assert r.status_code == 200
     protein = r.json()["result_seq"]
-    assert protein.startswith("M")  # Met start codon
+    # Real HBB N-terminus: Met-Val-His-Leu-Thr-Pro-Glu-Glu-Lys-Ser-Ala-Val-Thr-Ala-Leu-Trp-Gly-Lys-Val-Asn-Val-Asp-Glu
+    assert protein == "MVHLTPEEKSAVTALWGKVNVDE"
+
+
+def test_translate_brca2(client: TestClient, brca2_fasta: str) -> None:
+    """Translate real BRCA2 partial CDS — must match known N-terminus."""
+    from backend.formats import read_fasta
+    seqs = read_fasta(brca2_fasta)
+    brca2_seq = seqs[0].seq
+    client.post("/sequences/", json={"id": "brca2_t", "seq": brca2_seq, "molecule_type": "DNA"})
+    r = client.post("/sequences/brca2_t/edit", json={"operation": "translate"})
+    assert r.status_code == 200
+    protein = r.json()["result_seq"]
+    # BRCA2 N-terminus (from NM_000059.4 partial): MPIGSKERPTFFEIFKTRCNKADLGPISLNWFEELSSEAPGIRIWH
+    assert protein.startswith("MPIGS"), f"Expected MPIGS…, got {protein[:10]}…"
+    assert "KERCNKADLG" not in protein  # sanity: not a garbled sequence
 
 
 def test_insert(client: TestClient) -> None:

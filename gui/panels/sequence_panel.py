@@ -20,9 +20,46 @@ import re
 
 
 class DNAHighlighter(QSyntaxHighlighter):
-    """Color nucleotide bases: A=green, T=red, G=gold, C=blue."""
-    COLORS = {"A": "#4ade80", "T": "#f87171", "G": "#fbbf24", "C": "#60a5fa",
-               "U": "#c084fc", "-": "#475569"}
+    """
+    Color-codes ALL IUPAC nucleotide symbols (NCBI/IUPAC 1985 standard).
+
+    Definite bases:
+      A=green  T/U=red  G=gold  C=blue
+
+    Ambiguity codes (two-base):
+      R(A|G)=lime  Y(C|T)=salmon  M(A|C)=teal  K(G|T)=orange
+      W(A|T)=khaki  S(G|C)=purple
+
+    Ambiguity codes (three-base):
+      B(not A)=pink  D(not C)=sienna  H(not G)=peru  V(not T)=orchid
+
+    Universal:
+      N=gray  -(gap)=dark-gray  .(gap)=dark-gray
+    """
+    COLORS: dict[str, str] = {
+        # Definite bases
+        "A": "#4ade80",   # green
+        "T": "#f87171",   # red
+        "U": "#fb7185",   # rose (RNA uracil)
+        "G": "#fbbf24",   # amber/gold
+        "C": "#60a5fa",   # blue
+        # Two-base ambiguities
+        "R": "#a3e635",   # lime       A or G (puRine)
+        "Y": "#fca5a5",   # light-red  C or T (pYrimidine)
+        "M": "#2dd4bf",   # teal       A or C (aMino)
+        "K": "#fb923c",   # orange     G or T (Keto)
+        "W": "#d9f99d",   # yellow-grn A or T (Weak)
+        "S": "#a78bfa",   # violet     G or C (Strong)
+        # Three-base ambiguities
+        "B": "#f9a8d4",   # pink       C, G or T (not A)
+        "D": "#fcd34d",   # yellow     A, G or T (not C)
+        "H": "#fdba74",   # peach      A, C or T (not G)
+        "V": "#c4b5fd",   # lavender   A, C or G (not T/U)
+        # Universal
+        "N": "#94a3b8",   # slate-gray (aNy)
+        "-": "#475569",   # dark-gray  (gap)
+        ".": "#334155",   # darker-gray (alignment gap)
+    }
 
     def highlightBlock(self, text: str) -> None:
         for i, ch in enumerate(text.upper()):
@@ -30,6 +67,87 @@ class DNAHighlighter(QSyntaxHighlighter):
             if color:
                 fmt = QTextCharFormat()
                 fmt.setForeground(QColor(color))
+                self.setFormat(i, 1, fmt)
+
+
+class ProteinHighlighter(QSyntaxHighlighter):
+    """
+    Color-codes ALL IUPAC amino acid symbols by biochemical property.
+
+    Standard 20 + selenocysteine (U) + pyrrolysine (O) + ambiguity (B/Z/J/X) + stop (*).
+
+    Color scheme (ClustalX-inspired with biochemical grouping):
+      Hydrophobic nonpolar  (A V I L M F W P): amber/yellow
+      Aromatic              (F W Y H):          orange
+      Positively charged    (K R H):            blue
+      Negatively charged    (D E):              red
+      Polar uncharged       (S T N Q):          green
+      Special/sulfur        (C U):              yellow-green (Cys/Sec have SH)
+      Glycine               (G):                white (flexible)
+      Proline               (P):                purple (rigid)
+      Pyrrolysine           (O):                teal
+      Ambiguous             (B Z J X):          slate-gray
+      Stop codon            (*):                bright red background
+      Gap                   (- .):              dark-gray
+    """
+    # (foreground_color, bold)
+    COLORS: dict[str, tuple[str, bool]] = {
+        # Hydrophobic nonpolar
+        "A": ("#fbbf24", False),   # amber
+        "V": ("#f59e0b", False),
+        "I": ("#d97706", False),
+        "L": ("#b45309", False),
+        "M": ("#92400e", False),
+        # Aromatic
+        "F": ("#fb923c", True),    # orange
+        "W": ("#ea580c", True),
+        "Y": ("#c2410c", True),
+        # Positively charged
+        "K": ("#60a5fa", True),    # blue
+        "R": ("#3b82f6", True),
+        "H": ("#93c5fd", False),   # light-blue (partial positive at pH 7)
+        # Negatively charged
+        "D": ("#f87171", True),    # red
+        "E": ("#dc2626", True),
+        # Polar uncharged
+        "S": ("#4ade80", False),   # green
+        "T": ("#22c55e", False),
+        "N": ("#16a34a", False),
+        "Q": ("#15803d", False),
+        # Special/sulfur-containing
+        "C": ("#a3e635", True),    # yellow-green (Cys – forms disulfide)
+        "U": ("#84cc16", True),    # Selenocysteine
+        # Glycine (flexible – no side chain)
+        "G": ("#e2e8f0", False),   # near-white
+        # Proline (rigid – cyclized backbone)
+        "P": ("#a78bfa", True),    # violet
+        # Pyrrolysine (22nd amino acid)
+        "O": ("#2dd4bf", False),   # teal
+        # Ambiguous
+        "B": ("#94a3b8", False),   # Asp or Asn
+        "Z": ("#94a3b8", False),   # Glu or Gln
+        "J": ("#94a3b8", False),   # Leu or Ile
+        "X": ("#64748b", False),   # any
+        # Gap
+        "-": ("#475569", False),
+        ".": ("#334155", False),
+    }
+    STOP_COLOR = QColor("#7f1d1d")  # dark-red background for stop codon *
+
+    def highlightBlock(self, text: str) -> None:
+        for i, ch in enumerate(text.upper()):
+            if ch == "*":
+                fmt = QTextCharFormat()
+                fmt.setBackground(self.STOP_COLOR)
+                fmt.setForeground(QColor("#fca5a5"))
+                fmt.setFontWeight(700)
+                self.setFormat(i, 1, fmt)
+            elif ch in self.COLORS:
+                color, bold = self.COLORS[ch]
+                fmt = QTextCharFormat()
+                fmt.setForeground(QColor(color))
+                if bold:
+                    fmt.setFontWeight(700)
                 self.setFormat(i, 1, fmt)
 
 
@@ -106,8 +224,19 @@ class SequencePanel(QWidget):
         self._seq_display = QTextEdit()
         self._seq_display.setReadOnly(True)
         self._seq_display.setFont(QFont("JetBrains Mono,Fira Code,Courier New", 11))
-        self._highlighter = DNAHighlighter(self._seq_display.document())
+        # Highlighter is set dynamically per molecule type (see _apply_highlighter)
+        self._dna_highlighter = DNAHighlighter(self._seq_display.document())
+        self._prot_highlighter: ProteinHighlighter | None = None
         right_layout.addWidget(self._seq_display)
+
+        # Result display — separate document with its own highlighter
+        self._result_display = QTextEdit()
+        self._result_display.setReadOnly(True)
+        self._result_display.setPlaceholderText("Operation results appear here…")
+        self._result_display.setMaximumHeight(130)
+        self._result_display.setFont(QFont("JetBrains Mono,Fira Code,Courier New", 11))
+        self._result_dna_hl = DNAHighlighter(self._result_display.document())
+        self._result_prot_hl: ProteinHighlighter | None = None
 
         # Edit operations
         edit_grp = QGroupBox("Edit Operation")
@@ -164,11 +293,6 @@ class SequencePanel(QWidget):
         motif_layout.addWidget(self._motif_result)
         right_layout.addWidget(motif_grp)
 
-        # Result display
-        self._result_display = QTextEdit()
-        self._result_display.setReadOnly(True)
-        self._result_display.setPlaceholderText("Results will appear here…")
-        self._result_display.setMaximumHeight(120)
         right_layout.addWidget(self._result_display)
 
         result_btns = QHBoxLayout()
@@ -184,6 +308,20 @@ class SequencePanel(QWidget):
         splitter.addWidget(right)
         splitter.setSizes([280, 700])
         layout.addWidget(splitter)
+
+    def _apply_highlighter(self, display: QTextEdit, is_protein: bool) -> None:
+        """Swap the syntax highlighter on a display widget based on molecule type."""
+        if is_protein:
+            # Replace DNA highlighter with protein highlighter
+            self._dna_highlighter.setDocument(None)
+            if self._prot_highlighter is None:
+                self._prot_highlighter = ProteinHighlighter(display.document())
+            else:
+                self._prot_highlighter.setDocument(display.document())
+        else:
+            if self._prot_highlighter:
+                self._prot_highlighter.setDocument(None)
+            self._dna_highlighter.setDocument(display.document())
 
     def _update_op_fields(self) -> None:
         op = self._op_combo.currentData()
@@ -206,10 +344,12 @@ class SequencePanel(QWidget):
         if not seq:
             return
         self._active = seq
+        is_protein = seq.molecule_type == MoleculeType.PROTEIN
+        gc_str = f"GC: {self._gc(seq.seq):.1f}%" if not is_protein else f"AA: {seq.length}"
         self._info_label.setText(
-            f"{seq.name or seq.id}  ·  {seq.molecule_type.value}  ·  {seq.length:,} bp  ·  "
-            f"GC: {self._gc(seq.seq):.1f}%"
+            f"{seq.name or seq.id}  ·  {seq.molecule_type.value}  ·  {seq.length:,} {'aa' if is_protein else 'bp'}  ·  {gc_str}"
         )
+        self._apply_highlighter(self._seq_display, is_protein)
         self._seq_display.setPlainText(seq.seq)
         self.sequence_selected.emit(seq)
 
@@ -257,6 +397,19 @@ class SequencePanel(QWidget):
                 msg = f"Replaced [{start}:{end}] → {len(rep)} bases"
             else:
                 return
+
+            # Switch result-display highlighter based on what the operation produces
+            result_is_protein = op == "translate"
+            if result_is_protein:
+                self._result_dna_hl.setDocument(None)
+                if self._result_prot_hl is None:
+                    self._result_prot_hl = ProteinHighlighter(self._result_display.document())
+                else:
+                    self._result_prot_hl.setDocument(self._result_display.document())
+            else:
+                if self._result_prot_hl:
+                    self._result_prot_hl.setDocument(None)
+                self._result_dna_hl.setDocument(self._result_display.document())
 
             self._result_display.setPlainText(f"// {msg}\n{result}")
             self._last_result = result

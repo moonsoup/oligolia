@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routers import (
     sequences_router, databases_router, files_router,
     alignment_router, crispr_router, variants_router,
-    primers_router, pathways_router,
+    primers_router, pathways_router, analysis_router,
 )
 
 
@@ -45,6 +45,7 @@ app.include_router(crispr_router)
 app.include_router(variants_router)
 app.include_router(primers_router)
 app.include_router(pathways_router)
+app.include_router(analysis_router)
 
 
 @app.get("/")
