@@ -63,7 +63,7 @@ class VariantsPanel(QWidget):
         self._table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._table.currentRowChanged.connect(self._on_row_changed)
+        self._table.currentCellChanged.connect(lambda row, *_: self._on_row_changed(row))
         layout.addWidget(self._table)
 
         # Detail panel

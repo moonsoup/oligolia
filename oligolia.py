@@ -25,10 +25,15 @@ def main() -> None:
     app.setApplicationVersion("0.1.0")
     app.setOrganizationName("Oligolia")
 
-    # Use a clean system font
-    font = QFont()
-    font.setFamily("-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif")
-    font.setPointSize(13)
+    # Use a clean system font — QFont.setFamily takes a single family name
+    import sys as _sys
+    if _sys.platform == "darwin":
+        font_family = "SF Pro Text"
+    elif _sys.platform == "win32":
+        font_family = "Segoe UI"
+    else:
+        font_family = "Ubuntu"
+    font = QFont(font_family, 13)
     app.setFont(font)
 
     window = MainWindow()

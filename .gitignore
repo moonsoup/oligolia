@@ -22,3 +22,5 @@ src-tauri/target/
 .env.local
 .DS_Store
 **/__pycache__/
+dist/
+build/work/

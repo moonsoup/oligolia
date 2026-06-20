@@ -1,0 +1,20 @@
+OLIGOLIA - Gene Editing and Viewing Platform
+============================================
+
+This installer will set up Oligolia on your computer.
+
+Oligolia requires no separate Python installation — everything is bundled
+in this package.
+
+Features installed:
+  * Sequence editing (DNA/RNA/protein)
+  * Database search (NCBI, Ensembl, UniProt, KEGG)
+  * CRISPR guide RNA design
+  * Pairwise and multiple sequence alignment
+  * PCR primer design
+  * Variant (VCF) viewer
+  * File format support: FASTA, FASTQ, GenBank, EMBL, GFF3, VCF
+
+Disk space required: approximately 400 MB
+
+Click Next to continue.
