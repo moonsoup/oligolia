@@ -39,6 +39,9 @@ HIDDEN_IMPORTS = [
     "Bio.Data.CodonTable",
     "Bio.Data.IUPACData",
     "Bio.Alphabet",
+    # Version comparison
+    "packaging",
+    "packaging.version",
     # Network
     "httpx",
     "httpx._transports",
@@ -79,6 +82,8 @@ datas = [
     (os.path.join(bio_path, "Align"), "Bio/Align"),
     # Application assets
     (os.path.join(project_root, "assets", "icon.png"), "assets"),
+    # Version file — bundled so the app knows its own version at runtime
+    (os.path.join(project_root, "version.py"), "."),
 ]
 
 # ── Analysis ──────────────────────────────────────────────────────────────────

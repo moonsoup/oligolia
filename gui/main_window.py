@@ -17,20 +17,29 @@ from .panels import (
     SequencePanel, SearchPanel, CRISPRPanel,
     AlignmentPanel, PrimersPanel, VariantsPanel,
 )
+from .updater import UpdateChecker
+from .update_dialog import UpdateDialog
 from backend.formats import write_fasta, write_genbank
 from backend.models.sequence import Sequence
+
+try:
+    from version import VERSION
+except ImportError:
+    VERSION = "0.0.0"
 
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Oligolia — Gene Editing Platform")
+        self.setWindowTitle(f"Oligolia {VERSION} — Gene Editing Platform")
         self.resize(1400, 900)
         self.setMinimumSize(900, 600)
         self._build_menu()
         self._build_ui()
         self._build_status()
         self.setStyleSheet(DARK_STYLESHEET)
+        self._update_checker: UpdateChecker | None = None
+        self._start_update_check()
 
     # ── Menu ─────────────────────────────────────────────────────────────────
 
@@ -76,6 +85,10 @@ class MainWindow(QMainWindow):
 
         # Help
         help_menu = mb.addMenu("Help")
+        act_check_update = QAction("Check for Updates…", self)
+        act_check_update.triggered.connect(self._manual_update_check)
+        help_menu.addAction(act_check_update)
+        help_menu.addSeparator()
         act_about = QAction("About Oligolia", self)
         act_about.triggered.connect(self._show_about)
         help_menu.addAction(act_about)
@@ -195,6 +208,58 @@ class MainWindow(QMainWindow):
         msg.setText("\n".join(lines))
         msg.exec()
 
+    # ── Auto-update ───────────────────────────────────────────────────────────
+
+    def _start_update_check(self) -> None:
+        """Fire-and-forget background update check on startup."""
+        self._update_checker = UpdateChecker()
+        self._update_checker.update_available.connect(self._on_update_available)
+        # check_failed is intentionally ignored — no UI noise for network issues
+        self._update_checker.start()
+
+    def _on_update_available(self, info: object) -> None:
+        from .updater import UpdateInfo as _UI
+        if not isinstance(info, _UI):
+            return
+        dlg = UpdateDialog(info, parent=self)
+        dlg.setStyleSheet(self.styleSheet())
+        dlg.exec()
+
+    def _manual_update_check(self) -> None:
+        """Called from Help → Check for Updates."""
+        self._status.showMessage("Checking for updates…")
+        checker = UpdateChecker()
+
+        def _on_result(info: object) -> None:
+            from .updater import UpdateInfo as _UI
+            self._status.showMessage("Update check complete.")
+            if isinstance(info, _UI):
+                dlg = UpdateDialog(info, parent=self)
+                dlg.setStyleSheet(self.styleSheet())
+                dlg.exec()
+
+        def _on_fail(err: str) -> None:
+            self._status.showMessage("Update check failed — check your connection.")
+            QMessageBox.information(
+                self, "No updates found",
+                f"Could not reach the update server.\n\nError: {err}\n\n"
+                "You can check manually at:\nhttps://github.com/moonsoup/oligolia/releases"
+            )
+
+        def _on_up_to_date() -> None:
+            self._status.showMessage(f"Oligolia {VERSION} is up to date.")
+            QMessageBox.information(self, "Up to date", f"Oligolia {VERSION} is the latest version.")
+
+        # If no update signal fires before thread finishes, we're up to date
+        checker.update_available.connect(_on_result)
+        checker.check_failed.connect(_on_fail)
+        checker.finished.connect(lambda: (
+            None if hasattr(checker, "_fired") else _on_up_to_date()
+        ))
+        checker.update_available.connect(lambda _: setattr(checker, "_fired", True))
+        checker.start()
+        self._update_checker = checker  # keep reference
+
     def _show_about(self) -> None:
         QMessageBox.about(
             self, "About Oligolia",
@@ -208,6 +273,6 @@ class MainWindow(QMainWindow):
             "• PCR primer design + restriction enzyme analysis<br>"
             "• VCF variant viewer<br>"
             "• FASTA, FASTQ, GenBank, EMBL, GFF3/GTF, VCF support</p>"
-            "<p><b>Version:</b> 0.1.0<br>"
+            f"<p><b>Version:</b> {VERSION}<br>"
             "<b>Backend:</b> Biopython 1.85</p>"
         )
