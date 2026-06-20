@@ -19,7 +19,7 @@ all: icons
 	  *)        $(MAKE) win ;; \
 	esac
 
-# ── macOS DMG ──────────────────────────────────────────────────────────────
+# ── macOS DMG + code patch ─────────────────────────────────────────────────
 mac: icons _pyinstaller
 	@echo "→ Creating DMG…"
 	@TMP=$$(mktemp -d) && \
@@ -32,6 +32,9 @@ mac: icons _pyinstaller
 	    $(DIST)/Oligolia-$(VERSION)-mac.dmg 2>&1 | tail -1 && \
 	rm -rf $$TMP
 	@echo "✅  $(DIST)/Oligolia-$(VERSION)-mac.dmg"
+	@echo "→ Creating code patch…"
+	$(PYTHON) scripts/make_patch.py $(DIST)/Oligolia.app $(DIST)
+	@echo "✅  $(DIST)/Oligolia-$(VERSION)-mac-patch.tar.gz"
 
 # ── Windows (run on Windows or in CI) ─────────────────────────────────────
 win: icons _pyinstaller

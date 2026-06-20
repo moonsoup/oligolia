@@ -27,14 +27,17 @@ jobs:
           python -m venv backend/.venv
           backend/.venv/bin/pip install --quiet -r backend/requirements.txt PyInstaller PyQt6 Pillow
 
-      - name: Build DMG
-        run: bash build/build_mac.sh
+      - name: Build DMG + code patch
+        run: make mac
 
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: oligolia-mac
-          path: dist/Oligolia-*.dmg
+          path: |
+            dist/Oligolia-*.dmg
+            dist/Oligolia-*-mac-patch.tar.gz
+            dist/Oligolia-*-manifest.json
 
   # ── Windows installer ──────────────────────────────────────────────────────
   build-win:
@@ -126,6 +129,8 @@ jobs:
         with:
           files: |
             dist/oligolia-mac/*.dmg
+            dist/oligolia-mac/*-patch.tar.gz
+            dist/oligolia-mac/*-manifest.json
             dist/oligolia-win/*.exe
             dist/oligolia-linux/*.AppImage
           body: |
@@ -133,13 +138,18 @@ jobs:
 
             Gene editing and viewing platform — no installation of Python required.
 
-            ### Download
+            ### Update (existing users)
 
-            | Platform | File | Instructions |
-            |----------|------|--------------|
-            | **macOS** | `Oligolia-*-mac.dmg` | Open DMG → drag to Applications → launch from Launchpad |
-            | **Windows** | `Oligolia-*-Setup.exe` | Run installer → finish → launch from Start Menu or desktop |
-            | **Linux** | `Oligolia-*.AppImage` | `chmod +x` → double-click (or right-click → Integrate) |
+            Open Oligolia → **Help → Check for Updates** — the app will download
+            the patch automatically (~11 MB instead of the full installer).
+
+            ### Fresh install
+
+            | Platform | File | Size | Instructions |
+            |----------|------|------|--------------|
+            | **macOS** | `Oligolia-*-mac.dmg` | ~260 MB | Open DMG → drag to Applications → launch from Launchpad |
+            | **Windows** | `Oligolia-*-Setup.exe` | ~260 MB | Run installer → finish → launch from Start Menu or desktop |
+            | **Linux** | `Oligolia-*.AppImage` | ~260 MB | `chmod +x` → double-click |
 
             ### Features
             - Sequence editing (insert/delete/replace/translate/CRISPR)

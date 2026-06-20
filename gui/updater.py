@@ -1,16 +1,23 @@
 """
-Auto-update checker and installer launcher for Oligolia.
+Auto-update checker and installer/patcher for Oligolia.
 
-Flow:
-  1. On startup: check GitHub Releases API in a background thread
-  2. If a newer version exists: show UpdateDialog (non-blocking)
-  3. User clicks "Download & Install": downloads platform installer to temp dir
-  4. Launches the installer, then quits (installer replaces the app)
+Two-tier update strategy:
+  TIER 1 — Code patch (~11 MB, 96% smaller):
+    Downloads only the changed executable + version file.
+    Applies in-place to the installed .app / install dir.
+    Used for all normal releases (bug fixes, new features).
 
-Platform installer files expected on GitHub Releases:
-  macOS  : Oligolia-{version}-mac.dmg
-  Windows: Oligolia-{version}-Setup.exe
-  Linux  : Oligolia-{version}-x86_64.AppImage
+  TIER 2 — Full installer (~260 MB):
+    Full DMG / Setup.exe / AppImage.
+    Used when Python runtime, PyQt6, or Biopython version changes.
+    Indicated by requires_full=true in the release manifest.
+
+Each GitHub Release includes:
+  - Oligolia-{ver}-manifest.json          (always, tiny)
+  - Oligolia-{ver}-mac-patch.tar.gz       (~11 MB)
+  - Oligolia-{ver}-mac.dmg               (~260 MB, full)
+  - Oligolia-{ver}-Setup.exe             (Windows full)
+  - Oligolia-{ver}-x86_64.AppImage       (Linux full)
 """
 
 from __future__ import annotations
@@ -19,6 +26,9 @@ import os
 import platform
 import tempfile
 import subprocess
+import tarfile
+import shutil
+from pathlib import Path
 from packaging.version import Version
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -27,33 +37,56 @@ import httpx
 from PyQt6.QtCore import QThread, pyqtSignal
 
 try:
-    from version import VERSION, APP_NAME, RELEASES_API_URL, RELEASES_PAGE_URL
+    from version import VERSION, RELEASES_API_URL, RELEASES_PAGE_URL
 except ImportError:
     VERSION = "0.0.0"
-    APP_NAME = "Oligolia"
     RELEASES_API_URL = "https://api.github.com/repos/moonsoup/oligolia/releases/latest"
     RELEASES_PAGE_URL = "https://github.com/moonsoup/oligolia/releases"
 
 
-def _platform_asset_name(version: str) -> str:
-    """Return the expected release asset filename for this platform."""
+def _app_bundle_path() -> Path | None:
+    """Return the path to the running .app bundle (macOS only)."""
+    exe = Path(sys.executable)
+    # PyInstaller: sys.executable = .app/Contents/MacOS/Oligolia
+    for parent in exe.parents:
+        if parent.suffix == ".app":
+            return parent
+    return None
+
+
+def _install_dir() -> Path | None:
+    """Return the directory containing the running executable (Windows/Linux)."""
+    return Path(sys.executable).parent if getattr(sys, "frozen", False) else None
+
+
+def _platform_patch_asset(version: str) -> str:
+    if platform.system() == "Darwin":
+        return f"Oligolia-{version}-mac-patch.tar.gz"
+    return ""  # patch not yet implemented for Win/Linux (use full installer)
+
+
+def _platform_full_asset(version: str) -> str:
     system = platform.system()
     arch = platform.machine().lower()
     if system == "Darwin":
         return f"Oligolia-{version}-mac.dmg"
     if system == "Windows":
         return f"Oligolia-{version}-Setup.exe"
-    # Linux
     arch_tag = "x86_64" if arch in ("x86_64", "amd64") else arch
     return f"Oligolia-{version}-{arch_tag}.AppImage"
 
 
 class UpdateInfo:
-    def __init__(self, version: str, body: str, download_url: str, html_url: str) -> None:
+    def __init__(self, version: str, body: str, html_url: str,
+                 patch_url: str, full_url: str, requires_full: bool,
+                 min_compatible_base: str) -> None:
         self.version = version
         self.body = body
-        self.download_url = download_url
         self.html_url = html_url
+        self.patch_url = patch_url          # empty string = not available
+        self.full_url = full_url
+        self.requires_full = requires_full
+        self.min_compatible_base = min_compatible_base
 
     @property
     def is_newer(self) -> bool:
@@ -62,41 +95,82 @@ class UpdateInfo:
         except Exception:
             return False
 
+    @property
+    def can_patch(self) -> bool:
+        """True if a code patch is available and compatible with this installation."""
+        if self.requires_full or not self.patch_url:
+            return False
+        try:
+            return Version(VERSION) >= Version(self.min_compatible_base)
+        except Exception:
+            return False
+
+    @property
+    def download_url(self) -> str:
+        return self.patch_url if self.can_patch else self.full_url
+
+    @property
+    def download_size_hint(self) -> str:
+        return "~11 MB (code patch)" if self.can_patch else "~260 MB (full installer)"
+
 
 class UpdateChecker(QThread):
-    """Background thread that checks for a new release."""
-    update_available = pyqtSignal(object)   # emits UpdateInfo
-    check_failed = pyqtSignal(str)          # emits error message (silently ignored in UI)
+    """Background thread — checks GitHub Releases API for a newer version."""
+    update_available = pyqtSignal(object)
+    check_failed = pyqtSignal(str)
 
     def run(self) -> None:
         try:
             with httpx.Client(timeout=10, follow_redirects=True) as client:
                 r = client.get(
                     RELEASES_API_URL,
-                    headers={"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+                    headers={"Accept": "application/vnd.github+json",
+                             "X-GitHub-Api-Version": "2022-11-28"},
                 )
                 if r.status_code == 404:
-                    # Private repo or no releases yet — silently skip
-                    return
+                    return  # private repo or no releases — silently skip
                 r.raise_for_status()
                 data = r.json()
 
             tag = data.get("tag_name", "").lstrip("v")
             body = data.get("body", "")
             html_url = data.get("html_url", RELEASES_PAGE_URL)
-            assets = data.get("assets", [])
+            assets: dict[str, str] = {
+                a["name"]: a["browser_download_url"]
+                for a in data.get("assets", [])
+            }
 
-            wanted_name = _platform_asset_name(tag)
-            download_url = ""
-            for asset in assets:
-                if asset.get("name") == wanted_name:
-                    download_url = asset.get("browser_download_url", "")
-                    break
+            # Try to fetch the manifest for patch/full decision
+            manifest_name = f"Oligolia-{tag}-manifest.json"
+            manifest_url = assets.get(manifest_name, "")
+            requires_full = False
+            min_compat = "0.0.0"
+            patch_name = _platform_patch_asset(tag)
+            full_name = _platform_full_asset(tag)
 
-            if not download_url:
-                download_url = html_url  # fallback: open releases page
+            if manifest_url:
+                try:
+                    mresp = client.get(manifest_url, timeout=5)
+                    manifest = mresp.json()
+                    requires_full = manifest.get("requires_full", False)
+                    min_compat = manifest.get("min_compatible_base", "0.0.0")
+                    # Override asset names from manifest if provided
+                    m_assets = manifest.get("assets", {})
+                    if "darwin_patch" in m_assets and platform.system() == "Darwin":
+                        patch_name = m_assets["darwin_patch"]
+                    if "darwin_full" in m_assets and platform.system() == "Darwin":
+                        full_name = m_assets["darwin_full"]
+                except Exception:
+                    pass
 
-            info = UpdateInfo(version=tag, body=body, download_url=download_url, html_url=html_url)
+            patch_url = assets.get(patch_name, "")
+            full_url = assets.get(full_name, html_url)
+
+            info = UpdateInfo(
+                version=tag, body=body, html_url=html_url,
+                patch_url=patch_url, full_url=full_url,
+                requires_full=requires_full, min_compatible_base=min_compat,
+            )
             if info.is_newer:
                 self.update_available.emit(info)
 
@@ -105,9 +179,9 @@ class UpdateChecker(QThread):
 
 
 class DownloadWorker(QThread):
-    """Downloads the installer file in the background."""
-    progress = pyqtSignal(int)    # 0–100
-    finished = pyqtSignal(str)    # path to downloaded file
+    """Downloads an update file with streaming progress."""
+    progress = pyqtSignal(int)   # 0–100
+    finished = pyqtSignal(str)   # local file path
     error = pyqtSignal(str)
 
     def __init__(self, url: str, filename: str) -> None:
@@ -134,14 +208,52 @@ class DownloadWorker(QThread):
             self.error.emit(str(e))
 
 
-def launch_installer(path: str) -> None:
-    """Open the downloaded installer using the platform-native method."""
+def apply_code_patch(patch_path: str) -> None:
+    """
+    Apply a macOS code patch (tar.gz) to the running .app bundle.
+
+    The patch contains:
+      Contents/MacOS/Oligolia        ← replace the main executable
+      Contents/Resources/version.py  ← update version number
+      Contents/Info.plist            ← update plist version strings
+    """
+    app = _app_bundle_path()
+    if not app:
+        raise RuntimeError("Cannot locate .app bundle — are you running from the installed app?")
+
+    with tarfile.open(patch_path, "r:gz") as tar:
+        for member in tar.getmembers():
+            dest = app / member.name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if member.isfile():
+                with tar.extractfile(member) as src, open(dest, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                # Preserve executable bit for the main binary
+                if "MacOS/" in member.name:
+                    os.chmod(dest, 0o755)
+
+    # Clear code signature — patched binary won't match original sig
+    subprocess.run(["codesign", "--remove-signature", str(app)],
+                   capture_output=True)
+
+    # Re-sign ad-hoc so Gatekeeper accepts it
+    subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app)],
+                   capture_output=True)
+
+
+def launch_full_installer(path: str) -> None:
+    """Launch a full platform installer."""
     system = platform.system()
     if system == "Darwin":
         subprocess.Popen(["open", path])
     elif system == "Windows":
         os.startfile(path)  # type: ignore[attr-defined]
     else:
-        # Linux: make executable and run
         os.chmod(path, 0o755)
         subprocess.Popen([path])
+
+
+def restart_app() -> None:
+    """Restart the current process (after a patch has been applied)."""
+    exe = sys.executable
+    os.execv(exe, [exe] + sys.argv)
