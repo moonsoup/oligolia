@@ -1,0 +1,6 @@
+[tool.ruff.lint]
+extend-select = []
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"gui/**" = ["E702"]  # compact semicolons are intentional in PyQt6 widget init code
