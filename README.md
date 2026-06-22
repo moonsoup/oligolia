@@ -53,7 +53,6 @@ Oligolia is free and always will be. Donations fund server costs, database API f
 
 <div align="center">
 
-[![GitHub Sponsors](https://img.shields.io/badge/❤%20GitHub%20Sponsors-EA4AAA?style=for-the-badge&logo=github-sponsors&logoColor=white)](https://github.com/sponsors/moonsoup)
 [![Ko-fi](https://img.shields.io/badge/☕%20Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/moonsoup)
 [![PayPal](https://img.shields.io/badge/💳%20PayPal-003087?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/donate?business=moonsoup%40gmail.com&item_name=Oligolia+Gene+Platform)
 
