@@ -24,3 +24,5 @@ src-tauri/target/
 **/__pycache__/
 dist/
 build/work/
+.claude/qa/
+.claude/agent_comms.json
