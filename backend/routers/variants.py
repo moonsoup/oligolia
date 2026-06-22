@@ -16,15 +16,18 @@ def annotate_variants(req: VariantAnnotationRequest) -> VariantAnnotationRespons
     for v in req.variants:
         changed = False
         if req.annotate_gnomad:
-            variant_id = f"{v.chrom}-{v.pos}-{v.ref}-{','.join(v.alt)}"
-            try:
-                af = _gnomad.get_af(variant_id)
-                if af is not None:
-                    v.gnomad_af = af
-                    v.allele_frequency = af
-                    changed = True
-            except Exception:
-                pass
+            # Query each ALT allele separately — gnomAD expects one allele per lookup
+            for alt_allele in v.alt:
+                variant_id = f"{v.chrom}-{v.pos}-{v.ref}-{alt_allele}"
+                try:
+                    af = _gnomad.get_af(variant_id)
+                    if af is not None:
+                        v.gnomad_af = af
+                        v.allele_frequency = af
+                        changed = True
+                        break  # use AF from first matched allele
+                except Exception:
+                    pass
         if req.annotate_clinvar and v.gene:
             try:
                 records = _ncbi.search_clinvar(v.gene, max_results=5)
