@@ -61,7 +61,7 @@ def pairwise_align(req: PairwiseRequest) -> PairwiseResult:
     aligned1 = gapped_seqs[0] if len(gapped_seqs) >= 1 else req.seq1
     aligned2 = gapped_seqs[1] if len(gapped_seqs) >= 2 else req.seq2
 
-    aln_len = best.length
+    aln_len = len(aligned1)  # use gapped sequence length; Alignment.length removed in Biopython 1.82+
     identity = counts.identities / aln_len if aln_len else 0
     similarity = (counts.identities + counts.mismatches) / aln_len if aln_len else 0
 
