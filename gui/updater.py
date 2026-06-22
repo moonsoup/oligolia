@@ -197,6 +197,9 @@ class DownloadWorker(QThread):
                     r.raise_for_status()
                     total = int(r.headers.get("content-length", 0))
                     downloaded = 0
+                    if not total:
+                        # Signal indeterminate mode — dialog will pulse the bar
+                        self.progress.emit(-1)
                     with open(dest, "wb") as f:
                         for chunk in r.iter_bytes(chunk_size=65536):
                             f.write(chunk)
@@ -223,7 +226,12 @@ def apply_code_patch(patch_path: str) -> None:
 
     with tarfile.open(patch_path, "r:gz") as tar:
         for member in tar.getmembers():
-            dest = app / member.name
+            # Resolve destination and reject any path that escapes the .app bundle
+            dest = (app / member.name).resolve()
+            if not str(dest).startswith(str(app.resolve())):
+                raise RuntimeError(
+                    f"Patch contains unsafe path '{member.name}' — aborting"
+                )
             dest.parent.mkdir(parents=True, exist_ok=True)
             if member.isfile():
                 with tar.extractfile(member) as src, open(dest, "wb") as dst:

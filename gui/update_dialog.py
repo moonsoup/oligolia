@@ -122,7 +122,13 @@ class UpdateDialog(QDialog):
         self._worker.start()
 
     def _on_progress(self, pct: int) -> None:
-        self._progress.setValue(pct)
+        if pct == -1:
+            # Server sent no Content-Length — switch to indeterminate (pulsing) mode
+            self._progress.setRange(0, 0)
+        else:
+            if self._progress.maximum() == 0:
+                self._progress.setRange(0, 100)
+            self._progress.setValue(pct)
 
     def _on_downloaded(self, path: str) -> None:
         self._progress.setValue(100)
