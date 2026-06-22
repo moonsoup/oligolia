@@ -76,6 +76,15 @@ def _reverse_complement(seq: str) -> str:
 
 @router.post("/design", response_model=list[PrimerPair])
 def design_primers(req: PrimerDesignRequest) -> list[PrimerPair]:
+    if req.tm_min > req.tm_max:
+        raise HTTPException(400, f"tm_min ({req.tm_min}°C) must be ≤ tm_max ({req.tm_max}°C)")
+    if req.product_min > req.product_max:
+        raise HTTPException(400, f"product_min ({req.product_min}) must be ≤ product_max ({req.product_max})")
+    if req.primer_len_min > req.primer_len_max:
+        raise HTTPException(400, f"primer_len_min ({req.primer_len_min}) must be ≤ primer_len_max ({req.primer_len_max})")
+    if req.gc_min > req.gc_max:
+        raise HTTPException(400, f"gc_min ({req.gc_min}) must be ≤ gc_max ({req.gc_max})")
+
     template = req.template.upper().replace(" ", "").replace("\n", "")
     if len(template) < req.product_min + req.primer_len_min * 2:
         raise HTTPException(400, "Template too short for requested product size")
