@@ -27,6 +27,16 @@ FORMAT_READERS = {
 }
 
 
+def _decode(content: bytes) -> str:
+    """Decode bytes trying UTF-8, Latin-1, and Windows-1252 in order."""
+    for enc in ("utf-8", "latin-1", "cp1252"):
+        try:
+            return content.decode(enc)
+        except (UnicodeDecodeError, ValueError):
+            continue
+    raise HTTPException(422, "File encoding not supported — please re-save as UTF-8")
+
+
 @router.post("/parse/sequence", response_model=list[Sequence])
 async def parse_sequence_file(file: UploadFile = File(...)) -> list[Sequence]:
     """Upload any supported sequence file (FASTA, FASTQ, GenBank, EMBL) and get parsed sequences."""
@@ -35,7 +45,9 @@ async def parse_sequence_file(file: UploadFile = File(...)) -> list[Sequence]:
         raise HTTPException(415, f"Unsupported format: .{ext}. Supported: {', '.join(FORMAT_READERS)}")
     content = await file.read()
     try:
-        return FORMAT_READERS[ext](content.decode("utf-8"))
+        return FORMAT_READERS[ext](_decode(content))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(422, f"Parse error: {e}")
 
@@ -44,7 +56,9 @@ async def parse_sequence_file(file: UploadFile = File(...)) -> list[Sequence]:
 async def parse_vcf_file(file: UploadFile = File(...)) -> list[Variant]:
     content = await file.read()
     try:
-        return parse_vcf(content.decode("utf-8"))
+        return parse_vcf(_decode(content))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(422, f"VCF parse error: {e}")
 
@@ -55,10 +69,12 @@ async def parse_gff_file(file: UploadFile = File(...)) -> list[dict]:
     ext = (file.filename or "gff3").rsplit(".", 1)[-1].lower()
     try:
         if "gtf" in ext:
-            annotations = parse_gtf(content.decode("utf-8"))
+            annotations = parse_gtf(_decode(content))
         else:
-            annotations = parse_gff3(content.decode("utf-8"))
+            annotations = parse_gff3(_decode(content))
         return [a.model_dump() for a in annotations]
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(422, f"GFF parse error: {e}")
 
@@ -71,7 +87,9 @@ async def convert_file(file: UploadFile = File(...), target_format: str = "fasta
         raise HTTPException(415, f"Unsupported input format: .{ext}")
     content = await file.read()
     try:
-        sequences = FORMAT_READERS[ext](content.decode("utf-8"))
+        sequences = FORMAT_READERS[ext](_decode(content))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(422, f"Parse error: {e}")
 
