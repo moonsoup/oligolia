@@ -14,7 +14,7 @@ from PyQt6.QtCore import QUrl
 
 from .updater import (
     UpdateInfo, DownloadWorker,
-    apply_code_patch, launch_full_installer, restart_app,
+    apply_code_patch, launch_full_installer, restart_app, _log,
 )
 
 try:
@@ -102,8 +102,14 @@ class UpdateDialog(QDialog):
         url = self._info.download_url
         filename = url.split("/")[-1] if "/" in url else "update"
 
-        # Fallback: open browser if no direct download URL
+        # No direct binary asset — open release page in browser with explanation
         if not any(url.endswith(ext) for ext in (".dmg", ".exe", ".AppImage", ".tar.gz", ".zip")):
+            self._status.show()
+            self._status.setText(
+                "No installer asset found for this release. "
+                "Opening the release page — download manually from there."
+            )
+            _log.warning("download_url has no binary extension, opening browser: %s", url)
             QDesktopServices.openUrl(QUrl(url))
             self.accept()
             return

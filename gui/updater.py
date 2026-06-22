@@ -28,8 +28,18 @@ import tempfile
 import subprocess
 import tarfile
 import shutil
+import logging
 from pathlib import Path
 from packaging.version import Version
+
+# Write update diagnostics to a log file the user can inspect
+_log_path = Path(tempfile.gettempdir()) / "oligolia_update.log"
+logging.basicConfig(
+    filename=str(_log_path),
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+_log = logging.getLogger("oligolia.updater")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -120,6 +130,7 @@ class UpdateChecker(QThread):
     check_failed = pyqtSignal(str)
 
     def run(self) -> None:
+        _log.info("Update check started. Current VERSION=%s", VERSION)
         try:
             with httpx.Client(timeout=10, follow_redirects=True) as client:
                 r = client.get(
@@ -127,8 +138,10 @@ class UpdateChecker(QThread):
                     headers={"Accept": "application/vnd.github+json",
                              "X-GitHub-Api-Version": "2022-11-28"},
                 )
+                _log.info("GitHub API status: %s", r.status_code)
                 if r.status_code == 404:
-                    return  # private repo or no releases — silently skip
+                    _log.info("No releases found (404) — skipping")
+                    return
                 r.raise_for_status()
                 data = r.json()
 
@@ -139,6 +152,7 @@ class UpdateChecker(QThread):
                 a["name"]: a["browser_download_url"]
                 for a in data.get("assets", [])
             }
+            _log.info("Latest tag: %s  Assets: %s", tag, list(assets.keys()))
 
             # Try to fetch the manifest for patch/full decision
             manifest_name = f"Oligolia-{tag}-manifest.json"
@@ -147,34 +161,42 @@ class UpdateChecker(QThread):
             min_compat = "0.0.0"
             patch_name = _platform_patch_asset(tag)
             full_name = _platform_full_asset(tag)
+            _log.info("Looking for manifest: %s  found=%s", manifest_name, bool(manifest_url))
 
             if manifest_url:
                 try:
-                    mresp = client.get(manifest_url, timeout=5)
+                    with httpx.Client(timeout=10, follow_redirects=True) as mclient:
+                        mresp = mclient.get(manifest_url)
                     manifest = mresp.json()
                     requires_full = manifest.get("requires_full", False)
                     min_compat = manifest.get("min_compatible_base", "0.0.0")
-                    # Override asset names from manifest if provided
                     m_assets = manifest.get("assets", {})
                     if "darwin_patch" in m_assets and platform.system() == "Darwin":
                         patch_name = m_assets["darwin_patch"]
                     if "darwin_full" in m_assets and platform.system() == "Darwin":
                         full_name = m_assets["darwin_full"]
-                except Exception:
-                    pass
+                    _log.info("Manifest: requires_full=%s min_compat=%s patch_name=%s",
+                              requires_full, min_compat, patch_name)
+                except Exception as e:
+                    _log.warning("Manifest fetch failed: %s", e)
 
             patch_url = assets.get(patch_name, "")
             full_url = assets.get(full_name, html_url)
+            _log.info("patch_url=%s", patch_url or "(none)")
+            _log.info("full_url=%s", full_url)
 
             info = UpdateInfo(
                 version=tag, body=body, html_url=html_url,
                 patch_url=patch_url, full_url=full_url,
                 requires_full=requires_full, min_compatible_base=min_compat,
             )
+            _log.info("is_newer=%s can_patch=%s download_url=%s",
+                      info.is_newer, info.can_patch, info.download_url)
             if info.is_newer:
                 self.update_available.emit(info)
 
         except Exception as e:
+            _log.error("Update check failed: %s", e)
             self.check_failed.emit(str(e))
 
 
