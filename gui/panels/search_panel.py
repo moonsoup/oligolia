@@ -124,8 +124,10 @@ class SearchPanel(QWidget):
         self._worker.error.connect(self._on_search_error)
         self._worker.start()
 
-    def _do_search(self, query: str, species: str, dbs: list[str]) -> list[dict]:
+    def _do_search(self, query: str, species: str, dbs: list[str]) -> dict:
         results = []
+        errors: dict[str, str] = {}
+
         if "ncbi" in dbs:
             try:
                 records = self._ncbi.search_genes(query, organism=species, max_results=10)
@@ -140,8 +142,7 @@ class SearchPanel(QWidget):
                         "_raw": r,
                     })
             except Exception as e:
-                results.append({"name": "NCBI Error", "database": "ncbi_gene",
-                                "description": str(e), "organism": "", "accession": "", "_raw": {}})
+                errors["NCBI"] = str(e)
 
         if "ensembl" in dbs:
             try:
@@ -191,9 +192,12 @@ class SearchPanel(QWidget):
             except Exception:
                 pass
 
-        return results
+        return {"results": results, "errors": errors}
 
-    def _on_search_done(self, results: list[dict]) -> None:
+    def _on_search_done(self, payload: dict) -> None:
+        results = payload.get("results", [])
+        errors = payload.get("errors", {})
+
         self._results = results
         self._table.setRowCount(len(results))
         for row, r in enumerate(results):
@@ -202,7 +206,13 @@ class SearchPanel(QWidget):
                 bg = DB_COLORS.get(r.get("database", ""), QColor("#1e293b"))
                 item.setBackground(bg)
                 self._table.setItem(row, col, item)
-        self._status.setText(f"{len(results)} results found.")
+
+        status = f"{len(results)} result{'s' if len(results) != 1 else ''} found."
+        if errors:
+            failed = ", ".join(f"{db} ({msg.split(chr(10))[0][:60]})" for db, msg in errors.items())
+            status += f"  ⚠ Search failed for: {failed}"
+        self._status.setText(status)
+
         self._btn_search.setEnabled(True)
         self._btn_search.setText("Search")
 
