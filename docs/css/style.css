@@ -191,6 +191,9 @@ h1 {
   transition: border-color .15s, background .15s;
 }
 .btn-dl:hover { border-color: var(--green); background: rgba(74,222,128,.05); text-decoration: none; }
+.btn-dl-soon { opacity: .45; cursor: default; pointer-events: none; }
+.dl-card-soon { opacity: .7; }
+.dl-card-soon small a { color: var(--green-d); }
 .dl-card small { color: var(--text-dim); font-size: 12px; }
 .update-note {
   text-align: center; color: var(--text-dim); font-size: 14px;

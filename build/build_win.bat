@@ -1,8 +1,14 @@
 @echo off
+REM ============================================================
+REM  DEVELOPER BUILD SCRIPT — NOT AN INSTALLER
+REM  This compiles Oligolia from source. End users should
+REM  download the pre-built Setup.exe from:
+REM  https://github.com/moonsoup/oligolia/releases/latest
+REM ============================================================
 REM Build Oligolia Windows installer
 REM Run from project root: build\build_win.bat
 REM Requirements: Python 3.11+, pip
-REM Output: dist\Oligolia-0.1.0-Setup.exe
+REM Output: dist\Oligolia-Setup.exe
 
 setlocal
 cd /d "%~dp0\.."
