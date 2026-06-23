@@ -39,9 +39,9 @@ Free and open source. No Python installation required.
 
 | Platform | Requirements | Link |
 |---|---|---|
-| 🍎 **macOS** | macOS 12+ · Apple Silicon & Intel | [Download `.dmg`](https://github.com/moonsoup/oligolia/releases/download/v0.3.0/Oligolia-0.3.0-mac.dmg) |
-| 🪟 **Windows** | Windows 10/11 · 64-bit | [Download Installer](https://github.com/moonsoup/oligolia/releases/latest) |
-| 🐧 **Linux** | Ubuntu 20.04+ · x86_64 | [Download AppImage](https://github.com/moonsoup/oligolia/releases/latest) |
+| 🍎 **macOS** | macOS 12+ · Apple Silicon & Intel | [Download `.dmg`](https://github.com/moonsoup/oligolia/releases/latest/download/Oligolia-mac.dmg) |
+| 🪟 **Windows** | Windows 10/11 · 64-bit | [Download Installer](https://github.com/moonsoup/oligolia/releases/latest/download/Oligolia-Setup.exe) |
+| 🐧 **Linux** | Ubuntu 20.04+ · x86_64 | [Download AppImage](https://github.com/moonsoup/oligolia/releases/latest/download/Oligolia-x86_64.AppImage) |
 
 > ⚡ **Already installed?** Use **Help → Check for Updates** — patches are ~11 MB, not 260 MB.
 
