@@ -1,0 +1,301 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'   # matches 0.3.2, 1.0.0, etc (no leading v)
+      - 'v[0-9]+.[0-9]+.[0-9]+'  # matches v0.3.2 too
+
+jobs:
+
+  # ── macOS DMG ──────────────────────────────────────────────────────────────
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install --quiet --upgrade pip
+          backend/.venv/bin/pip install --quiet \
+            -r backend/requirements.txt \
+            PyInstaller pyinstaller-hooks-contrib \
+            PyQt6 Pillow
+
+      - name: Read version
+        id: ver
+        run: echo "version=$(python -c "exec(open('version.py').read()); print(VERSION)")" >> "$GITHUB_OUTPUT"
+
+      - name: Generate icons
+        run: backend/.venv/bin/python assets/make_icon.py
+
+      - name: Build .app
+        run: |
+          backend/.venv/bin/pyinstaller build/oligolia.spec \
+            --distpath dist \
+            --workpath build/work \
+            --noconfirm --clean
+
+      - name: Create DMG
+        run: |
+          VERSION=${{ steps.ver.outputs.version }}
+          TMP=$(mktemp -d)
+          cp -R dist/Oligolia.app "$TMP/"
+          ln -s /Applications "$TMP/Applications"
+          hdiutil create \
+            -volname "Oligolia $VERSION" \
+            -srcfolder "$TMP" \
+            -ov -format UDZO -imagekey zlib-level=9 \
+            "dist/Oligolia-mac.dmg"
+          cp "dist/Oligolia-mac.dmg" "dist/Oligolia-$VERSION-mac.dmg"
+          rm -rf "$TMP"
+
+      - name: Build patch
+        run: |
+          VERSION=${{ steps.ver.outputs.version }}
+          cd dist/Oligolia.app
+          tar -czf "../Oligolia-mac-patch.tar.gz" \
+            Contents/MacOS/Oligolia \
+            Contents/Resources/version.py
+          cp "../Oligolia-mac-patch.tar.gz" "../Oligolia-$VERSION-mac-patch.tar.gz"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-artifacts
+          path: |
+            dist/Oligolia-mac.dmg
+            dist/Oligolia-mac-patch.tar.gz
+            dist/Oligolia-*-mac.dmg
+            dist/Oligolia-*-mac-patch.tar.gz
+
+  # ── Windows Setup.exe ──────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m venv backend\.venv
+          backend\.venv\Scripts\pip install --quiet --upgrade pip
+          backend\.venv\Scripts\pip install --quiet `
+            -r backend\requirements.txt `
+            PyInstaller pyinstaller-hooks-contrib `
+            PyQt6 Pillow
+
+      - name: Read version
+        id: ver
+        run: |
+          $v = python -c "exec(open('version.py').read()); print(VERSION)"
+          echo "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      - name: Generate icons
+        run: backend\.venv\Scripts\python assets\make_icon.py
+
+      - name: Build .exe
+        run: |
+          backend\.venv\Scripts\pyinstaller build\oligolia.spec `
+            --distpath dist `
+            --workpath build\work `
+            --noconfirm --clean
+
+      - name: Update Inno Setup version
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          (Get-Content build\inno_setup.iss) `
+            -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$v`"" `
+            -replace 'OutputBaseFilename=.*', "OutputBaseFilename=Oligolia-$v-Setup" |
+            Set-Content build\inno_setup.iss
+
+      - name: Create installer
+        run: iscc build\inno_setup.iss
+
+      - name: Copy stable-named installer
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          Copy-Item "dist\Oligolia-$v-Setup.exe" "dist\Oligolia-Setup.exe"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            dist\Oligolia-Setup.exe
+            dist\Oligolia-*-Setup.exe
+
+  # ── Linux AppImage ─────────────────────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 libglib2.0-0 libdbus-1-3 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 \
+            libxkbcommon-x11-0 libfuse2
+
+      - name: Install Python dependencies
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install --quiet --upgrade pip
+          backend/.venv/bin/pip install --quiet \
+            -r backend/requirements.txt \
+            PyInstaller pyinstaller-hooks-contrib \
+            PyQt6 Pillow
+
+      - name: Read version
+        id: ver
+        run: echo "version=$(python -c "exec(open('version.py').read()); print(VERSION)")" >> "$GITHUB_OUTPUT"
+
+      - name: Download appimagetool
+        run: |
+          curl -fsSL -o /usr/local/bin/appimagetool \
+            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x /usr/local/bin/appimagetool
+
+      - name: Generate icons
+        run: backend/.venv/bin/python assets/make_icon.py
+
+      - name: Build executable
+        run: |
+          backend/.venv/bin/pyinstaller build/oligolia.spec \
+            --distpath dist \
+            --workpath build/work \
+            --noconfirm --clean
+
+      - name: Create AppImage
+        run: |
+          VERSION=${{ steps.ver.outputs.version }}
+          APP=Oligolia
+
+          # Write .desktop file
+          cat > "dist/$APP/$APP.desktop" <<EOF
+          [Desktop Entry]
+          Name=Oligolia
+          Comment=Gene Editing and Viewing Platform
+          Exec=Oligolia %f
+          Icon=oligolia
+          Terminal=false
+          Type=Application
+          Categories=Science;Biology;Education;
+          EOF
+
+          cp assets/icon.png "dist/$APP/oligolia.png"
+
+          # Build AppDir
+          APPDIR="build/work/$APP.AppDir"
+          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" \
+                   "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+          cp -r dist/$APP/* "$APPDIR/usr/bin/"
+          cp "dist/$APP/$APP.desktop" "$APPDIR/usr/share/applications/"
+          cp assets/icon.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/oligolia.png"
+          cp assets/icon.png "$APPDIR/oligolia.png"
+          cp "dist/$APP/$APP.desktop" "$APPDIR/"
+
+          ARCH=x86_64 appimagetool "$APPDIR" "dist/Oligolia-x86_64.AppImage"
+          cp "dist/Oligolia-x86_64.AppImage" "dist/Oligolia-$VERSION-x86_64.AppImage"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            dist/Oligolia-x86_64.AppImage
+            dist/Oligolia-*-x86_64.AppImage
+
+  # ── Create GitHub Release ──────────────────────────────────────────────────
+  release:
+    needs: [build-mac, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: ver
+        run: echo "version=$(python -c "exec(open('version.py').read()); print(VERSION)")" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Write manifest
+        run: |
+          VERSION=${{ steps.ver.outputs.version }}
+          cat > release-assets/Oligolia-$VERSION-manifest.json <<EOF
+          {
+            "version": "$VERSION",
+            "requires_full": false,
+            "min_compatible_base": "0.3.0",
+            "changelog": "Oligolia $VERSION",
+            "assets": {
+              "darwin_patch": "Oligolia-mac-patch.tar.gz",
+              "darwin_full":  "Oligolia-mac.dmg",
+              "windows_full": "Oligolia-Setup.exe",
+              "linux_full":   "Oligolia-x86_64.AppImage"
+            }
+          }
+          EOF
+          cp release-assets/Oligolia-$VERSION-manifest.json release-assets/Oligolia-manifest.json
+
+      - name: Extract release notes from commit log
+        id: notes
+        run: |
+          VERSION=${{ steps.ver.outputs.version }}
+          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | sed -n '2p')
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(git log "$PREV_TAG"..HEAD --pretty=format:"- %s" --no-merges | grep -v "^- Bump to\|^- bump")
+          else
+            NOTES="Initial release."
+          fi
+          # Write to file to handle multiline
+          echo "$NOTES" > /tmp/release_notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=${{ steps.ver.outputs.version }}
+          TAG=${{ github.ref_name }}
+
+          gh release create "$TAG" \
+            --title "Oligolia $VERSION" \
+            --notes-file /tmp/release_notes.md \
+            --latest \
+            release-assets/Oligolia-mac.dmg \
+            release-assets/Oligolia-mac-patch.tar.gz \
+            release-assets/Oligolia-Setup.exe \
+            release-assets/Oligolia-x86_64.AppImage \
+            release-assets/Oligolia-$VERSION-mac.dmg \
+            release-assets/Oligolia-$VERSION-mac-patch.tar.gz \
+            release-assets/Oligolia-$VERSION-Setup.exe \
+            release-assets/Oligolia-$VERSION-x86_64.AppImage \
+            release-assets/Oligolia-$VERSION-manifest.json \
+            release-assets/Oligolia-manifest.json

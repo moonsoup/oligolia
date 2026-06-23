@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."       # project root
 VENV="backend/.venv"
 PYTHON="$VENV/bin/python"
 PYI="$VENV/bin/pyinstaller"
-VERSION="0.1.0"
+VERSION=$(python3 -c "exec(open('version.py').read()); print(VERSION)")
 APP_NAME="Oligolia"
 DMG_NAME="${APP_NAME}-${VERSION}-mac.dmg"
 
