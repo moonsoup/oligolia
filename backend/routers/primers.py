@@ -205,3 +205,64 @@ def restriction_sites(req: RestrictionRequest) -> list[RestrictionSite]:
             ))
     results.sort(key=lambda r: (-r.count, r.enzyme))
     return results
+
+
+class DigestRequest(BaseModel):
+    template: str
+    enzymes: list[str]
+
+
+class DigestFragment(BaseModel):
+    start: int
+    end: int
+    length: int
+    sequence: str
+
+
+class DigestResult(BaseModel):
+    enzymes: list[str]
+    cut_positions: list[int]
+    fragments: list[DigestFragment]
+    template_length: int
+
+
+@router.post("/digest", response_model=DigestResult)
+def digest(req: DigestRequest) -> DigestResult:
+    """Simulate restriction digest — cut template at all sites for the given enzymes."""
+    template = req.template.upper().replace(" ", "").replace("\n", "")
+    if not template:
+        raise HTTPException(400, "Template sequence is required")
+    unknown = [e for e in req.enzymes if e not in RESTRICTION_ENZYMES]
+    if unknown:
+        raise HTTPException(400, f"Unknown enzymes: {unknown}. Supported: {sorted(RESTRICTION_ENZYMES)}")
+
+    # Collect all cut positions across all requested enzymes
+    cut_positions: list[int] = []
+    for enzyme in req.enzymes:
+        recog = RESTRICTION_ENZYMES[enzyme]
+        pattern = _pattern(recog)
+        for m in re.finditer(f"(?={pattern})", template):
+            pos = m.start() + len(recog)  # cut after recognition sequence
+            if pos not in cut_positions:
+                cut_positions.append(pos)
+
+    cut_positions = sorted(set(cut_positions))
+
+    # Build fragments from cut positions
+    boundaries = [0] + cut_positions + [len(template)]
+    fragments = []
+    for i in range(len(boundaries) - 1):
+        start, end = boundaries[i], boundaries[i + 1]
+        seq = template[start:end]
+        if seq:
+            fragments.append(DigestFragment(
+                start=start, end=end, length=len(seq), sequence=seq,
+            ))
+
+    fragments.sort(key=lambda f: -f.length)
+    return DigestResult(
+        enzymes=req.enzymes,
+        cut_positions=cut_positions,
+        fragments=fragments,
+        template_length=len(template),
+    )
