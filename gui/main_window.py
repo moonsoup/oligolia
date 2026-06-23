@@ -15,7 +15,7 @@ from PyQt6.QtGui import QAction
 from .styles import DARK_STYLESHEET
 from .panels import (
     SequencePanel, SearchPanel, CRISPRPanel,
-    AlignmentPanel, PrimersPanel, VariantsPanel,
+    AlignmentPanel, PrimersPanel, VariantsPanel, PathwaysPanel,
 )
 from .updater import UpdateChecker
 from .update_dialog import UpdateDialog
@@ -117,6 +117,7 @@ class MainWindow(QMainWindow):
         self._align_panel = AlignmentPanel()
         self._primers_panel = PrimersPanel()
         self._variants_panel = VariantsPanel()
+        self._pathways_panel = PathwaysPanel()
 
         # Connect cross-panel signals
         self._seq_panel.sequence_selected.connect(self._on_seq_selected)
@@ -128,12 +129,13 @@ class MainWindow(QMainWindow):
         def _add(panel: QWidget, icon: str, label: str) -> None:
             self._tabs.addTab(panel, f"{icon} {label}")
 
-        _add(self._seq_panel,     "🧬", "Sequences")
-        _add(self._search_panel,  "🔍", "DB Search")
-        _add(self._crispr_panel,  "✂️", "CRISPR")
-        _add(self._align_panel,   "↔", "Alignment")
-        _add(self._primers_panel, "🔩", "Primers")
-        _add(self._variants_panel,"🔬", "Variants")
+        _add(self._seq_panel,      "🧬", "Sequences")
+        _add(self._search_panel,   "🔍", "DB Search")
+        _add(self._crispr_panel,   "✂️", "CRISPR")
+        _add(self._align_panel,    "↔", "Alignment")
+        _add(self._primers_panel,  "🔩", "Primers")
+        _add(self._variants_panel, "🔬", "Variants")
+        _add(self._pathways_panel, "🗺️", "Pathways")
 
         layout.addWidget(self._tabs)
 
@@ -217,14 +219,29 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "No sequence", "Load a sequence first.")
             return
         from PyQt6.QtWidgets import QInputDialog
-        organisms = ["human", "mouse", "ecoli", "yeast", "drosophila", "cho"]
+        organisms = [
+            "human", "mouse", "rat", "zebrafish", "xenopus",
+            "ecoli", "bsubtilis",
+            "yeast", "pichia",
+            "drosophila", "celegans",
+            "arabidopsis", "tobacco",
+            "cho",
+        ]
         labels = [
             "Human (Homo sapiens)",
             "Mouse (Mus musculus)",
+            "Rat (Rattus norvegicus)",
+            "Zebrafish (Danio rerio)",
+            "Xenopus laevis (oocyte expression)",
             "E. coli K12",
+            "Bacillus subtilis",
             "Yeast (S. cerevisiae)",
+            "Pichia pastoris (secreted proteins)",
             "Drosophila melanogaster",
-            "CHO (biopharmaceutical production)",
+            "C. elegans",
+            "Arabidopsis thaliana",
+            "Tobacco (N. tabacum, molecular farming)",
+            "CHO cells (biopharmaceutical production)",
         ]
         label, ok = QInputDialog.getItem(
             self, "Optimize Codons", "Target expression organism:", labels, 0, False

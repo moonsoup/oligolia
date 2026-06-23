@@ -207,6 +207,10 @@ ECOLI_CODON: dict[str, str] = {
     "*": "TAA",
 }
 
+# All tables: most-frequent codon per amino acid derived from Kazusa Codon Usage Database
+# (https://www.kazusa.or.jp/codon/) and published literature.
+
+# Mus musculus (house mouse)
 MOUSE_CODON: dict[str, str] = {
     "F": "TTC", "L": "CTG", "I": "ATC", "M": "ATG", "V": "GTG",
     "S": "AGC", "P": "CCC", "T": "ACC", "A": "GCC", "Y": "TAC",
@@ -215,14 +219,34 @@ MOUSE_CODON: dict[str, str] = {
     "*": "TGA",
 }
 
+# Rattus norvegicus (rat)
+RAT_CODON: dict[str, str] = {
+    "F": "TTC", "L": "CTG", "I": "ATC", "M": "ATG", "V": "GTG",
+    "S": "AGC", "P": "CCC", "T": "ACC", "A": "GCC", "Y": "TAC",
+    "H": "CAC", "Q": "CAG", "N": "AAC", "K": "AAG", "D": "GAC",
+    "E": "GAG", "C": "TGC", "W": "TGG", "R": "AGG", "G": "GGC",
+    "*": "TGA",
+}
+
+# Saccharomyces cerevisiae (baker's yeast)
 YEAST_CODON: dict[str, str] = {
-    "F": "TTC", "L": "TTG", "I": "ATT", "M": "ATG", "V": "GTT",
-    "S": "TCT", "P": "CCA", "T": "ACT", "A": "GCT", "Y": "TAC",
-    "H": "CAC", "Q": "CAA", "N": "AAT", "K": "AAA", "D": "GAT",
+    "F": "TTT", "L": "TTG", "I": "ATT", "M": "ATG", "V": "GTT",
+    "S": "TCT", "P": "CCA", "T": "ACT", "A": "GCT", "Y": "TAT",
+    "H": "CAT", "Q": "CAA", "N": "AAT", "K": "AAA", "D": "GAT",
     "E": "GAA", "C": "TGT", "W": "TGG", "R": "AGA", "G": "GGT",
     "*": "TAA",
 }
 
+# Komagataella phaffii / Pichia pastoris (methylotrophic yeast, secreted proteins)
+PICHIA_CODON: dict[str, str] = {
+    "F": "TTT", "L": "TTG", "I": "ATT", "M": "ATG", "V": "GTT",
+    "S": "TCT", "P": "CCA", "T": "ACA", "A": "GCT", "Y": "TAT",
+    "H": "CAT", "Q": "CAA", "N": "AAT", "K": "AAA", "D": "GAT",
+    "E": "GAA", "C": "TGT", "W": "TGG", "R": "AGA", "G": "GGT",
+    "*": "TAA",
+}
+
+# Drosophila melanogaster (fruit fly)
 DROSOPHILA_CODON: dict[str, str] = {
     "F": "TTC", "L": "CTG", "I": "ATC", "M": "ATG", "V": "GTG",
     "S": "AGC", "P": "CCC", "T": "ACC", "A": "GCC", "Y": "TAC",
@@ -231,7 +255,62 @@ DROSOPHILA_CODON: dict[str, str] = {
     "*": "TGA",
 }
 
-CHO_CODON: dict[str, str] = {  # Chinese Hamster Ovary — common for biopharmaceuticals
+# Caenorhabditis elegans (nematode worm)
+CELEGANS_CODON: dict[str, str] = {
+    "F": "TTT", "L": "CTG", "I": "ATC", "M": "ATG", "V": "GTG",
+    "S": "TCG", "P": "CCA", "T": "ACA", "A": "GCT", "Y": "TAC",
+    "H": "CAC", "Q": "CAA", "N": "AAT", "K": "AAG", "D": "GAT",
+    "E": "GAA", "C": "TGT", "W": "TGG", "R": "CGA", "G": "GGT",
+    "*": "TAA",
+}
+
+# Danio rerio (zebrafish)
+ZEBRAFISH_CODON: dict[str, str] = {
+    "F": "TTC", "L": "CTG", "I": "ATC", "M": "ATG", "V": "GTG",
+    "S": "AGC", "P": "CCC", "T": "ACC", "A": "GCC", "Y": "TAC",
+    "H": "CAC", "Q": "CAG", "N": "AAC", "K": "AAG", "D": "GAC",
+    "E": "GAG", "C": "TGC", "W": "TGG", "R": "AGG", "G": "GGC",
+    "*": "TGA",
+}
+
+# Arabidopsis thaliana (thale cress — plant research)
+ARABIDOPSIS_CODON: dict[str, str] = {
+    "F": "TTT", "L": "CTT", "I": "ATT", "M": "ATG", "V": "GTT",
+    "S": "AGT", "P": "CCA", "T": "ACA", "A": "GCT", "Y": "TAT",
+    "H": "CAT", "Q": "CAA", "N": "AAT", "K": "AAA", "D": "GAT",
+    "E": "GAA", "C": "TGT", "W": "TGG", "R": "AGA", "G": "GGT",
+    "*": "TAA",
+}
+
+# Nicotiana tabacum (tobacco — plant biopharma / molecular farming)
+TOBACCO_CODON: dict[str, str] = {
+    "F": "TTT", "L": "CTT", "I": "ATT", "M": "ATG", "V": "GTT",
+    "S": "AGT", "P": "CCA", "T": "ACA", "A": "GCT", "Y": "TAT",
+    "H": "CAT", "Q": "CAA", "N": "AAT", "K": "AAA", "D": "GAT",
+    "E": "GAA", "C": "TGT", "W": "TGG", "R": "AGA", "G": "GGT",
+    "*": "TAA",
+}
+
+# Bacillus subtilis (gram-positive bacterial expression)
+BSUBTILIS_CODON: dict[str, str] = {
+    "F": "TTT", "L": "CTG", "I": "ATT", "M": "ATG", "V": "GTT",
+    "S": "TCG", "P": "CCG", "T": "ACG", "A": "GCG", "Y": "TAT",
+    "H": "CAT", "Q": "CAG", "N": "AAT", "K": "AAA", "D": "GAT",
+    "E": "GAA", "C": "TGT", "W": "TGG", "R": "CGT", "G": "GGC",
+    "*": "TAA",
+}
+
+# Xenopus laevis (African clawed frog — oocyte expression system)
+XENOPUS_CODON: dict[str, str] = {
+    "F": "TTC", "L": "CTG", "I": "ATC", "M": "ATG", "V": "GTG",
+    "S": "AGC", "P": "CCT", "T": "ACC", "A": "GCC", "Y": "TAC",
+    "H": "CAC", "Q": "CAG", "N": "AAC", "K": "AAG", "D": "GAC",
+    "E": "GAG", "C": "TGC", "W": "TGG", "R": "AGA", "G": "GGC",
+    "*": "TGA",
+}
+
+# Cricetulus griseus / CHO (Chinese Hamster Ovary — biopharmaceutical production)
+CHO_CODON: dict[str, str] = {
     "F": "TTC", "L": "CTG", "I": "ATC", "M": "ATG", "V": "GTG",
     "S": "AGC", "P": "CCC", "T": "ACC", "A": "GCC", "Y": "TAC",
     "H": "CAC", "Q": "CAG", "N": "AAC", "K": "AAG", "D": "GAC",
@@ -239,13 +318,21 @@ CHO_CODON: dict[str, str] = {  # Chinese Hamster Ovary — common for biopharmac
     "*": "TGA",
 }
 
-CODON_TABLES = {
-    "human":       HUMAN_CODON,
-    "mouse":       MOUSE_CODON,
-    "ecoli":       ECOLI_CODON,
-    "yeast":       YEAST_CODON,
-    "drosophila":  DROSOPHILA_CODON,
-    "cho":         CHO_CODON,
+CODON_TABLES: dict[str, dict[str, str]] = {
+    "human":        HUMAN_CODON,
+    "mouse":        MOUSE_CODON,
+    "rat":          RAT_CODON,
+    "ecoli":        ECOLI_CODON,
+    "bsubtilis":    BSUBTILIS_CODON,
+    "yeast":        YEAST_CODON,
+    "pichia":       PICHIA_CODON,
+    "drosophila":   DROSOPHILA_CODON,
+    "celegans":     CELEGANS_CODON,
+    "zebrafish":    ZEBRAFISH_CODON,
+    "arabidopsis":  ARABIDOPSIS_CODON,
+    "tobacco":      TOBACCO_CODON,
+    "xenopus":      XENOPUS_CODON,
+    "cho":          CHO_CODON,
 }
 
 GENETIC_CODE: dict[str, str] = {

@@ -5,7 +5,7 @@
 #define MyAppName "Oligolia"
 #define MyAppVersion "0.3.0"
 #define MyAppPublisher "Oligolia Project"
-#define MyAppURL "https://github.com/oligolia/oligolia"
+#define MyAppURL "https://github.com/moonsoup/oligolia"
 #define MyAppExeName "Oligolia.exe"
 #define MyAppDescription "Gene Editing and Viewing Platform"
 
@@ -20,6 +20,7 @@ AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=no
+SourceDir=..\
 OutputDir=dist
 OutputBaseFilename=Oligolia-{#MyAppVersion}-Setup
 SetupIconFile=assets\icon.ico
