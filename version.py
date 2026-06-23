@@ -1,6 +1,6 @@
 """Single source of truth for the application version."""
 
-VERSION = "0.3.3"
+VERSION = "0.4.0"
 APP_NAME = "Oligolia"
 GITHUB_OWNER = "moonsoup"
 GITHUB_REPO = "oligolia"
