@@ -83,6 +83,10 @@ class MainWindow(QMainWindow):
         act_codon.triggered.connect(self._show_codon_usage)
         tools_menu.addAction(act_codon)
 
+        act_optimize = QAction("Optimize Codons for Organism…", self)
+        act_optimize.triggered.connect(self._optimize_codons)
+        tools_menu.addAction(act_optimize)
+
         # Help
         help_menu = mb.addMenu("Help")
         act_check_update = QAction("Check for Updates…", self)
@@ -207,6 +211,43 @@ class MainWindow(QMainWindow):
         msg.setWindowTitle("Codon Usage")
         msg.setText("\n".join(lines))
         msg.exec()
+
+    def _optimize_codons(self) -> None:
+        if not self._seq_panel._active:
+            QMessageBox.warning(self, "No sequence", "Load a sequence first.")
+            return
+        from PyQt6.QtWidgets import QInputDialog
+        organisms = ["human", "mouse", "ecoli", "yeast", "drosophila", "cho"]
+        labels = [
+            "Human (Homo sapiens)",
+            "Mouse (Mus musculus)",
+            "E. coli K12",
+            "Yeast (S. cerevisiae)",
+            "Drosophila melanogaster",
+            "CHO (biopharmaceutical production)",
+        ]
+        label, ok = QInputDialog.getItem(
+            self, "Optimize Codons", "Target expression organism:", labels, 0, False
+        )
+        if not ok:
+            return
+        organism = organisms[labels.index(label)]
+        from backend.routers.analysis import optimize_codons
+        try:
+            result = optimize_codons(
+                dna_sequence=self._seq_panel._active.seq,
+                organism=organism,
+            )
+            self._seq_panel._active.seq = result.optimized
+            self._seq_panel._refresh_active()
+            QMessageBox.information(
+                self, "Codon Optimization Complete",
+                f"Optimized for {label}\n"
+                f"Codons changed: {result.changes} / {len(result.optimized) // 3}\n"
+                f"Sequence updated in editor."
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Optimization failed", str(e))
 
     # ── Auto-update ───────────────────────────────────────────────────────────
 

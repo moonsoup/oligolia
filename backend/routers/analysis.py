@@ -207,7 +207,46 @@ ECOLI_CODON: dict[str, str] = {
     "*": "TAA",
 }
 
-CODON_TABLES = {"human": HUMAN_CODON, "ecoli": ECOLI_CODON}
+MOUSE_CODON: dict[str, str] = {
+    "F": "TTC", "L": "CTG", "I": "ATC", "M": "ATG", "V": "GTG",
+    "S": "AGC", "P": "CCC", "T": "ACC", "A": "GCC", "Y": "TAC",
+    "H": "CAC", "Q": "CAG", "N": "AAC", "K": "AAG", "D": "GAC",
+    "E": "GAG", "C": "TGC", "W": "TGG", "R": "AGA", "G": "GGC",
+    "*": "TGA",
+}
+
+YEAST_CODON: dict[str, str] = {
+    "F": "TTC", "L": "TTG", "I": "ATT", "M": "ATG", "V": "GTT",
+    "S": "TCT", "P": "CCA", "T": "ACT", "A": "GCT", "Y": "TAC",
+    "H": "CAC", "Q": "CAA", "N": "AAT", "K": "AAA", "D": "GAT",
+    "E": "GAA", "C": "TGT", "W": "TGG", "R": "AGA", "G": "GGT",
+    "*": "TAA",
+}
+
+DROSOPHILA_CODON: dict[str, str] = {
+    "F": "TTC", "L": "CTG", "I": "ATC", "M": "ATG", "V": "GTG",
+    "S": "AGC", "P": "CCC", "T": "ACC", "A": "GCC", "Y": "TAC",
+    "H": "CAC", "Q": "CAG", "N": "AAC", "K": "AAG", "D": "GAC",
+    "E": "GAG", "C": "TGC", "W": "TGG", "R": "CGG", "G": "GGC",
+    "*": "TGA",
+}
+
+CHO_CODON: dict[str, str] = {  # Chinese Hamster Ovary — common for biopharmaceuticals
+    "F": "TTC", "L": "CTG", "I": "ATC", "M": "ATG", "V": "GTG",
+    "S": "AGC", "P": "CCC", "T": "ACC", "A": "GCC", "Y": "TAC",
+    "H": "CAC", "Q": "CAG", "N": "AAC", "K": "AAG", "D": "GAC",
+    "E": "GAG", "C": "TGC", "W": "TGG", "R": "AGG", "G": "GGG",
+    "*": "TGA",
+}
+
+CODON_TABLES = {
+    "human":       HUMAN_CODON,
+    "mouse":       MOUSE_CODON,
+    "ecoli":       ECOLI_CODON,
+    "yeast":       YEAST_CODON,
+    "drosophila":  DROSOPHILA_CODON,
+    "cho":         CHO_CODON,
+}
 
 GENETIC_CODE: dict[str, str] = {
     "TTT": "F", "TTC": "F", "TTA": "L", "TTG": "L",
