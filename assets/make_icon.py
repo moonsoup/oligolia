@@ -102,16 +102,20 @@ def main() -> None:
     print(f"Saved iconset at {iconset_dir}")
 
     # Try to create .icns via iconutil (macOS only)
+    import sys
     import subprocess
-    icns_path = ASSETS / "icon.icns"
-    result = subprocess.run(
-        ["iconutil", "-c", "icns", str(iconset_dir), "-o", str(icns_path)],
-        capture_output=True,
-    )
-    if result.returncode == 0:
-        print(f"Saved {icns_path}")
+    if sys.platform == "darwin":
+        icns_path = ASSETS / "icon.icns"
+        result = subprocess.run(
+            ["iconutil", "-c", "icns", str(iconset_dir), "-o", str(icns_path)],
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            print(f"Saved {icns_path}")
+        else:
+            print("iconutil failed — .icns skipped")
     else:
-        print("iconutil not available — .icns skipped (OK on non-macOS)")
+        print("iconutil not available on this platform — .icns skipped")
 
 
 if __name__ == "__main__":
