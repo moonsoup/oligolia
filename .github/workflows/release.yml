@@ -46,16 +46,23 @@ jobs:
       - name: Create DMG
         run: |
           VERSION=${{ steps.ver.outputs.version }}
-          TMP=$(mktemp -d)
+          TMP=$(mktemp -d)/dmg_src
+          mkdir -p "$TMP"
           cp -R dist/Oligolia.app "$TMP/"
           ln -s /Applications "$TMP/Applications"
-          hdiutil create \
-            -volname "Oligolia $VERSION" \
-            -srcfolder "$TMP" \
-            -ov -format UDZO -imagekey zlib-level=9 \
-            "dist/Oligolia-mac.dmg"
+          # hdiutil can fail with "Resource busy" on CI; retry up to 3 times
+          for attempt in 1 2 3; do
+            sleep $((attempt * 2))
+            hdiutil create \
+              -volname "Oligolia $VERSION" \
+              -srcfolder "$TMP" \
+              -ov -format UDZO -imagekey zlib-level=9 \
+              "dist/Oligolia-mac.dmg" && break
+            echo "hdiutil attempt $attempt failed, retrying..."
+            [ $attempt -eq 3 ] && exit 1
+          done
           cp "dist/Oligolia-mac.dmg" "dist/Oligolia-$VERSION-mac.dmg"
-          rm -rf "$TMP"
+          rm -rf "$(dirname "$TMP")"
 
       - name: Build patch
         run: |
@@ -126,20 +133,22 @@ jobs:
           Select-String -Path build\inno_setup.iss -Pattern "MyAppVersion|OutputBaseFilename"
 
       - name: Create installer
-        run: iscc build\inno_setup.iss
-
-      - name: Locate and stage installer
         run: |
           $v = "${{ steps.ver.outputs.version }}"
-          # Installer lands in dist\ (OutputDir=..\dist relative to build\inno_setup.iss)
+          # /O sets OutputDir relative to current directory (project root) — bypasses ISS OutputDir
+          iscc /O"dist" build\inno_setup.iss
+          Write-Host "Contents of dist\:"
+          Get-ChildItem dist\ -Filter "*.exe" | ForEach-Object { Write-Host $_.FullName }
+
+      - name: Stage installer
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
           $src = "dist\Oligolia-$v-Setup.exe"
           if (-not (Test-Path $src)) {
-            Write-Error "Expected installer not found at $src — listing dist\:"
-            Get-ChildItem dist\ -Filter "*.exe" | ForEach-Object { Write-Host $_.FullName }
+            Write-Error "Installer not found at $src"
             exit 1
           }
           Copy-Item $src "dist\Oligolia-Setup.exe"
-          Write-Host "Staged: $src -> dist\Oligolia-Setup.exe"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
