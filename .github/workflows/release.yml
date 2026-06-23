@@ -118,18 +118,28 @@ jobs:
       - name: Update Inno Setup version
         run: |
           $v = "${{ steps.ver.outputs.version }}"
-          (Get-Content build\inno_setup.iss) `
-            -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$v`"" `
-            -replace 'OutputBaseFilename=.*', "OutputBaseFilename=Oligolia-$v-Setup" |
-            Set-Content build\inno_setup.iss
+          $iss = Get-Content build\inno_setup.iss -Raw
+          $iss = $iss -replace '#define MyAppVersion "[^"]*"', "#define MyAppVersion `"$v`""
+          $iss = $iss -replace 'OutputBaseFilename=[^\r\n]*', "OutputBaseFilename=Oligolia-$v-Setup"
+          Set-Content build\inno_setup.iss $iss
+          Write-Host "ISS version set to $v"
+          Select-String -Path build\inno_setup.iss -Pattern "MyAppVersion|OutputBaseFilename"
 
       - name: Create installer
         run: iscc build\inno_setup.iss
 
-      - name: Copy stable-named installer
+      - name: Locate and stage installer
         run: |
           $v = "${{ steps.ver.outputs.version }}"
-          Copy-Item "dist\Oligolia-$v-Setup.exe" "dist\Oligolia-Setup.exe"
+          # Installer lands in dist\ (OutputDir=..\dist relative to build\inno_setup.iss)
+          $src = "dist\Oligolia-$v-Setup.exe"
+          if (-not (Test-Path $src)) {
+            Write-Error "Expected installer not found at $src — listing dist\:"
+            Get-ChildItem dist\ -Filter "*.exe" | ForEach-Object { Write-Host $_.FullName }
+            exit 1
+          }
+          Copy-Item $src "dist\Oligolia-Setup.exe"
+          Write-Host "Staged: $src -> dist\Oligolia-Setup.exe"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -287,6 +297,9 @@ jobs:
         run: |
           VERSION=${{ steps.ver.outputs.version }}
           TAG=${{ github.ref_name }}
+
+          # Delete existing release for this tag if it exists (e.g. from a re-run)
+          gh release delete "$TAG" --repo moonsoup/oligolia --yes 2>/dev/null || true
 
           gh release create "$TAG" \
             --title "Oligolia $VERSION" \
