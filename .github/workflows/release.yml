@@ -5,6 +5,7 @@ on:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'   # matches 0.3.2, 1.0.0, etc (no leading v)
       - 'v[0-9]+.[0-9]+.[0-9]+'  # matches v0.3.2 too
+  workflow_dispatch:              # allow manual trigger for CI testing
 
 jobs:
 
