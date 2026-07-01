@@ -12,12 +12,21 @@ from PyQt6.QtWidgets import (
     QToolBar, QCheckBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QColor, QTextCharFormat, QSyntaxHighlighter, QTextCursor
+from PyQt6.QtGui import (
+    QFont, QColor, QTextCharFormat, QSyntaxHighlighter, QTextCursor,
+    QKeySequence, QShortcut,
+)
 
 from Bio.Seq import Seq
 from backend.models.sequence import Sequence, MoleculeType, Annotation
 from backend.formats import read_fasta, read_fastq, read_genbank, VENDORS, export_order
+from gui.history import UndoStack
 import re
+
+# Edit operations that mutate the active sequence in place (and are undoable).
+# Molecule-type-changing ops (translate/transcribe/back_transcribe) stay
+# non-destructive and render into the result pane instead.
+IN_PLACE_OPS = {"insert", "delete", "replace", "reverse_complement", "complement"}
 
 
 class DNAHighlighter(QSyntaxHighlighter):
@@ -230,7 +239,9 @@ class SequencePanel(QWidget):
         super().__init__()
         self._sequences: dict[str, Sequence] = {}
         self._active: Sequence | None = None
+        self._history: dict[str, UndoStack] = {}  # per-sequence undo/redo
         self._build_ui()
+        self._install_shortcuts()
 
     def _build_ui(self) -> None:
         layout = QHBoxLayout(self)
@@ -364,6 +375,19 @@ class SequencePanel(QWidget):
         btn_apply.setObjectName("primary")
         btn_apply.clicked.connect(self._apply_op)
         op_row.addWidget(btn_apply)
+
+        self._btn_undo = QPushButton("↶ Undo")
+        self._btn_undo.setToolTip("Undo last edit (Ctrl+Z)")
+        self._btn_undo.clicked.connect(self._undo)
+        self._btn_undo.setEnabled(False)
+        op_row.addWidget(self._btn_undo)
+
+        self._btn_redo = QPushButton("↷ Redo")
+        self._btn_redo.setToolTip("Redo (Ctrl+Y / Ctrl+Shift+Z)")
+        self._btn_redo.clicked.connect(self._redo)
+        self._btn_redo.setEnabled(False)
+        op_row.addWidget(self._btn_redo)
+
         edit_layout.addLayout(op_row)
 
         # Position fields (shown/hidden by operation)
@@ -502,6 +526,15 @@ class SequencePanel(QWidget):
         if not seq:
             return
         self._active = seq
+        self._render_active()
+        self._update_undo_buttons()
+        self.sequence_selected.emit(seq)
+
+    def _render_active(self) -> None:
+        """Refresh the viewer widgets from ``self._active`` (no signal emit)."""
+        seq = self._active
+        if not seq:
+            return
         is_protein = seq.molecule_type == MoleculeType.PROTEIN
         gc_str = f"GC: {self._gc(seq.seq):.1f}%" if not is_protein else f"AA: {seq.length}"
         self._info_label.setText(
@@ -517,7 +550,67 @@ class SequencePanel(QWidget):
         self._on_frame_changed()
         self._feature_highlighter.setAnnotations(seq.annotations if self._feature_check.isChecked() else [])
         self._update_feature_legend()
-        self.sequence_selected.emit(seq)
+
+    # ── Undo/redo ────────────────────────────────────────────────────────────
+    def _install_shortcuts(self) -> None:
+        undo_sc = QShortcut(QKeySequence(QKeySequence.StandardKey.Undo), self)
+        undo_sc.activated.connect(self._undo)
+        redo_sc = QShortcut(QKeySequence(QKeySequence.StandardKey.Redo), self)
+        redo_sc.activated.connect(self._redo)
+        # Ctrl+Shift+Z as an explicit redo alias (common on macOS/Linux).
+        redo_alt = QShortcut(QKeySequence("Ctrl+Shift+Z"), self)
+        redo_alt.activated.connect(self._redo)
+
+    def _history_for(self, seq_id: str) -> UndoStack:
+        stack = self._history.get(seq_id)
+        if stack is None:
+            stack = UndoStack()
+            self._history[seq_id] = stack
+        return stack
+
+    def _set_active_seq(self, new_seq: str) -> None:
+        """Replace the active sequence's bases (no history push) and re-render."""
+        seq = self._active
+        seq.seq = new_seq
+        seq.length = len(new_seq)
+        self._sequences[seq.id] = seq
+        item = self._list.currentItem()
+        if item:
+            item.setToolTip(f"{seq.length:,} bp · {seq.molecule_type.value}")
+        self._render_active()
+
+    def _commit_edit(self, new_seq: str, msg: str) -> None:
+        """Apply an in-place edit with an undo checkpoint of the prior state."""
+        self._history_for(self._active.id).push(self._active.seq)
+        self._set_active_seq(new_seq)
+        self._set_result_highlighter(self._active.molecule_type == MoleculeType.PROTEIN)
+        self._result_display.setPlainText(f"// {msg}\n{new_seq}")
+        self._last_result = new_seq
+        self._last_result_id = self._active.id
+        self._update_undo_buttons()
+
+    def _undo(self) -> None:
+        if not self._active:
+            return
+        prev = self._history_for(self._active.id).undo(self._active.seq)
+        if prev is None:
+            return
+        self._set_active_seq(prev)
+        self._update_undo_buttons()
+
+    def _redo(self) -> None:
+        if not self._active:
+            return
+        nxt = self._history_for(self._active.id).redo(self._active.seq)
+        if nxt is None:
+            return
+        self._set_active_seq(nxt)
+        self._update_undo_buttons()
+
+    def _update_undo_buttons(self) -> None:
+        stack = self._history.get(self._active.id) if self._active else None
+        self._btn_undo.setEnabled(bool(stack and stack.can_undo()))
+        self._btn_redo.setEnabled(bool(stack and stack.can_redo()))
 
     def _gc(self, seq: str) -> float:
         s = seq.upper()
@@ -564,25 +657,33 @@ class SequencePanel(QWidget):
             else:
                 return
 
-            # Switch result-display highlighter based on what the operation produces
-            result_is_protein = op == "translate"
-            if result_is_protein:
-                self._result_dna_hl.setDocument(None)
-                if self._result_prot_hl is None:
-                    self._result_prot_hl = ProteinHighlighter(self._result_display.document())
-                else:
-                    self._result_prot_hl.setDocument(self._result_display.document())
-            else:
-                if self._result_prot_hl:
-                    self._result_prot_hl.setDocument(None)
-                self._result_dna_hl.setDocument(self._result_display.document())
+            # In-place edits mutate the active sequence and are undoable;
+            # type-changing ops stay non-destructive in the result pane.
+            if op in IN_PLACE_OPS:
+                self._commit_edit(result, msg)
+                return
 
+            # Switch result-display highlighter based on what the operation produces
+            self._set_result_highlighter(op == "translate")
             self._result_display.setPlainText(f"// {msg}\n{result}")
             self._last_result = result
             self._last_result_id = f"{self._active.id}_{op}"
 
         except Exception as e:
             QMessageBox.critical(self, "Operation failed", str(e))
+
+    def _set_result_highlighter(self, is_protein: bool) -> None:
+        """Attach the DNA or protein highlighter to the result-pane document."""
+        if is_protein:
+            self._result_dna_hl.setDocument(None)
+            if self._result_prot_hl is None:
+                self._result_prot_hl = ProteinHighlighter(self._result_display.document())
+            else:
+                self._result_prot_hl.setDocument(self._result_display.document())
+        else:
+            if self._result_prot_hl:
+                self._result_prot_hl.setDocument(None)
+            self._result_dna_hl.setDocument(self._result_display.document())
 
     def _find_motif(self) -> None:
         if not self._active:
@@ -677,6 +778,7 @@ class SequencePanel(QWidget):
         if item:
             seq_id = item.data(Qt.ItemDataRole.UserRole)
             self._sequences.pop(seq_id, None)
+            self._history.pop(seq_id, None)
             self._list.takeItem(self._list.row(item))
 
     def _add_manual(self) -> None:
