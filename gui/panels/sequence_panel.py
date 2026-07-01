@@ -9,13 +9,14 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QListWidget, QListWidgetItem,
     QTextEdit, QLabel, QPushButton, QComboBox, QLineEdit, QGroupBox,
     QFormLayout, QSpinBox, QMessageBox, QFileDialog, QApplication,
+    QToolBar, QCheckBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QColor, QTextCharFormat, QSyntaxHighlighter
+from PyQt6.QtGui import QFont, QColor, QTextCharFormat, QSyntaxHighlighter, QTextCursor
 
 from Bio.Seq import Seq
-from backend.models.sequence import Sequence, MoleculeType
-from backend.formats import read_fasta, read_fastq, read_genbank
+from backend.models.sequence import Sequence, MoleculeType, Annotation
+from backend.formats import read_fasta, read_fastq, read_genbank, VENDORS, export_order
 import re
 
 
@@ -151,6 +152,77 @@ class ProteinHighlighter(QSyntaxHighlighter):
                 self.setFormat(i, 1, fmt)
 
 
+class ReadingFrameHighlighter(QSyntaxHighlighter):
+    """
+    Background-shades codons (3-base groups) of one reading frame, layered on
+    top of the per-base foreground highlighter on the same document.
+
+    Forward frames (+1/+2/+3) shade directly from the displayed sequence.
+    Reverse frames (-1/-2/-3) are computed against the reverse complement and
+    mapped back onto the forward-oriented display positions.
+    """
+    BAND_COLORS = ["#1e3a5f", "#3f2d1e", "#1e3f2d"]  # cycles every codon
+
+    def __init__(self, document) -> None:
+        super().__init__(document)
+        self._frame: int | None = None
+        self._seq: str = ""
+
+    def setFrame(self, frame: int | None, seq: str) -> None:
+        self._frame = frame
+        self._seq = seq
+        self.rehighlight()
+
+    def highlightBlock(self, text: str) -> None:
+        if not self._frame or not self._seq or len(text) != len(self._seq):
+            return
+        n = len(self._seq)
+        offset = abs(self._frame) - 1
+        if self._frame > 0:
+            for i in range(offset, n):
+                fmt = QTextCharFormat()
+                fmt.setBackground(QColor(self.BAND_COLORS[(i - offset) // 3 % 3]))
+                self.setFormat(i, 1, fmt)
+        else:
+            for rc_i in range(offset, n):
+                orig_i = n - 1 - rc_i
+                fmt = QTextCharFormat()
+                fmt.setBackground(QColor(self.BAND_COLORS[(rc_i - offset) // 3 % 3]))
+                self.setFormat(orig_i, 1, fmt)
+
+
+class FeatureHighlighter(QSyntaxHighlighter):
+    """Background-shades annotated gene features (CDS, exon, promoter, …) by type."""
+    PALETTE = ["#1e3a5f", "#5f1e3a", "#3a5f1e", "#5f4a1e",
+               "#1e5f4a", "#4a1e5f", "#5f1e1e", "#274060"]
+
+    def __init__(self, document) -> None:
+        super().__init__(document)
+        self._annotations: list[Annotation] = []
+        self._color_map: dict[str, QColor] = {}
+
+    def setAnnotations(self, annotations: list[Annotation]) -> None:
+        self._annotations = annotations or []
+        types = sorted({a.feature_type for a in self._annotations})
+        self._color_map = {t: QColor(self.PALETTE[i % len(self.PALETTE)]) for i, t in enumerate(types)}
+        self.rehighlight()
+
+    @property
+    def color_map(self) -> dict[str, QColor]:
+        return self._color_map
+
+    def highlightBlock(self, text: str) -> None:
+        if not self._annotations:
+            return
+        for ann in self._annotations:
+            start, end = max(0, ann.start), min(len(text), ann.end)
+            if start >= end:
+                continue
+            fmt = QTextCharFormat()
+            fmt.setBackground(self._color_map[ann.feature_type])
+            self.setFormat(start, end - start, fmt)
+
+
 class SequencePanel(QWidget):
     sequence_selected = pyqtSignal(object)  # emits Sequence
 
@@ -220,13 +292,52 @@ class SequencePanel(QWidget):
         self._info_label.setObjectName("subheading")
         right_layout.addWidget(self._info_label)
 
+        # ── Viewport options bar: selection + view/format toggles ─────────────
+        options_bar = QToolBar()
+        options_bar.setMovable(False)
+
+        options_bar.addWidget(QLabel(" Select: "))
+        self._sel_start = QSpinBox(); self._sel_start.setMaximum(999_999_999)
+        self._sel_end = QSpinBox(); self._sel_end.setMaximum(999_999_999)
+        options_bar.addWidget(self._sel_start)
+        options_bar.addWidget(QLabel("–"))
+        options_bar.addWidget(self._sel_end)
+        btn_select = QPushButton("Select")
+        btn_select.clicked.connect(self._select_range)
+        options_bar.addWidget(btn_select)
+
+        options_bar.addSeparator()
+
+        options_bar.addWidget(QLabel(" Reading frame: "))
+        self._frame_combo = QComboBox()
+        self._frame_combo.addItem("Off", None)
+        for f in (1, 2, 3, -1, -2, -3):
+            self._frame_combo.addItem(f"{f:+d}", f)
+        self._frame_combo.currentIndexChanged.connect(self._on_frame_changed)
+        options_bar.addWidget(self._frame_combo)
+
+        options_bar.addSeparator()
+
+        self._feature_check = QCheckBox("Highlight features")
+        self._feature_check.toggled.connect(self._on_features_toggled)
+        options_bar.addWidget(self._feature_check)
+
+        self._feature_legend = QLabel("")
+        self._feature_legend.setTextFormat(Qt.TextFormat.RichText)
+        options_bar.addWidget(self._feature_legend)
+
+        right_layout.addWidget(options_bar)
+
         # Sequence display
         self._seq_display = QTextEdit()
         self._seq_display.setReadOnly(True)
         self._seq_display.setFont(QFont("JetBrains Mono,Fira Code,Courier New", 11))
-        # Highlighter is set dynamically per molecule type (see _apply_highlighter)
+        # Per-base highlighter is set dynamically per molecule type (see _apply_highlighter).
+        # Frame/feature highlighters are layered on top and stay attached; they no-op when off.
         self._dna_highlighter = DNAHighlighter(self._seq_display.document())
         self._prot_highlighter: ProteinHighlighter | None = None
+        self._frame_highlighter = ReadingFrameHighlighter(self._seq_display.document())
+        self._feature_highlighter = FeatureHighlighter(self._seq_display.document())
         right_layout.addWidget(self._seq_display)
 
         # Result display — separate document with its own highlighter
@@ -293,6 +404,21 @@ class SequencePanel(QWidget):
         motif_layout.addWidget(self._motif_result)
         right_layout.addWidget(motif_grp)
 
+        # Synthesis vendor export — generates a vendor-formatted order file
+        # (uses the Select range above, full sequence if none chosen). No
+        # order is submitted; the user uploads the file on the vendor's own portal.
+        synth_grp = QGroupBox("Export for Synthesis")
+        synth_layout = QHBoxLayout(synth_grp)
+        self._vendor_combo = QComboBox()
+        for key, profile in VENDORS.items():
+            label = profile.display_name + ("" if profile.verified else " — unverified format")
+            self._vendor_combo.addItem(label, key)
+        synth_layout.addWidget(self._vendor_combo, 1)
+        btn_export_synth = QPushButton("Export…")
+        btn_export_synth.clicked.connect(self._export_synthesis)
+        synth_layout.addWidget(btn_export_synth)
+        right_layout.addWidget(synth_grp)
+
         right_layout.addWidget(self._result_display)
 
         result_btns = QHBoxLayout()
@@ -323,6 +449,38 @@ class SequencePanel(QWidget):
                 self._prot_highlighter.setDocument(None)
             self._dna_highlighter.setDocument(display.document())
 
+    def _select_range(self) -> None:
+        if not self._active:
+            return
+        start, end = self._sel_start.value(), self._sel_end.value()
+        if start > end:
+            start, end = end, start
+        cursor = self._seq_display.textCursor()
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        self._seq_display.setTextCursor(cursor)
+        self._seq_display.setFocus()
+
+    def _on_frame_changed(self) -> None:
+        frame = self._frame_combo.currentData()
+        seq = self._active.seq if (self._active and frame) else ""
+        self._frame_highlighter.setFrame(frame, seq)
+
+    def _on_features_toggled(self, checked: bool) -> None:
+        annotations = self._active.annotations if (self._active and checked) else []
+        self._feature_highlighter.setAnnotations(annotations)
+        self._update_feature_legend()
+
+    def _update_feature_legend(self) -> None:
+        if not self._feature_check.isChecked() or not self._feature_highlighter.color_map:
+            self._feature_legend.setText("")
+            return
+        swatches = " ".join(
+            f"<span style='background-color:{color.name()};'>&nbsp;&nbsp;</span> {ftype}"
+            for ftype, color in self._feature_highlighter.color_map.items()
+        )
+        self._feature_legend.setText(swatches)
+
     def _update_op_fields(self) -> None:
         op = self._op_combo.currentData()
         self._pos_widget.setVisible(op in ("delete", "replace"))
@@ -351,6 +509,14 @@ class SequencePanel(QWidget):
         )
         self._apply_highlighter(self._seq_display, is_protein)
         self._seq_display.setPlainText(seq.seq)
+        self._sel_start.setMaximum(seq.length)
+        self._sel_end.setMaximum(seq.length)
+        self._frame_combo.setEnabled(not is_protein)
+        if is_protein:
+            self._frame_combo.setCurrentIndex(0)  # "Off" — frames are meaningless for protein
+        self._on_frame_changed()
+        self._feature_highlighter.setAnnotations(seq.annotations if self._feature_check.isChecked() else [])
+        self._update_feature_legend()
         self.sequence_selected.emit(seq)
 
     def _gc(self, seq: str) -> float:
@@ -434,6 +600,37 @@ class SequencePanel(QWidget):
         if positions:
             pos_str += ("…" if len(positions) > 20 else "")
             self._result_display.setPlainText(f"// Motif '{motif}' — {len(positions)} occurrences\nPositions: {pos_str}")
+
+    def _export_synthesis(self) -> None:
+        if not self._active:
+            QMessageBox.warning(self, "No sequence", "Select a sequence first.")
+            return
+        vendor = self._vendor_combo.currentData()
+        start, end = self._sel_start.value(), self._sel_end.value()
+        if start == end == 0:
+            start, end = 0, self._active.length
+        elif start > end:
+            start, end = end, start
+
+        try:
+            data, filename, instructions = export_order(self._active, vendor, start, end)
+        except Exception as e:
+            QMessageBox.critical(self, "Export failed", str(e))
+            return
+
+        path, _ = QFileDialog.getSaveFileName(self, "Export for Synthesis", filename)
+        if not path:
+            return
+        with open(path, "wb") as f:
+            f.write(data)
+
+        steps = "\n".join(f"{i + 1}. {step}" for i, step in enumerate(instructions))
+        QMessageBox.information(
+            self, "Export complete",
+            f"Saved {os.path.basename(path)}.\n\n"
+            f"This file is not submitted anywhere — it's the upload format the vendor's "
+            f"own ordering portal expects. Next steps:\n\n{steps}"
+        )
 
     def _save_result_fasta(self) -> None:
         result = self._result_display.toPlainText()

@@ -9,9 +9,8 @@ import os
 import sys
 import tarfile
 import tempfile
-import platform
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -22,12 +21,22 @@ from gui.updater import (
     UpdateInfo,
     _platform_patch_asset,
     _platform_full_asset,
-    _app_bundle_path,
     apply_code_patch,
     restart_app,
 )
 
 CURRENT = "0.3.0"
+
+
+@pytest.fixture(autouse=True)
+def _pin_current_version(monkeypatch):
+    """Pin gui.updater.VERSION to a fixed baseline for these tests.
+
+    Tests assert version-comparison behavior relative to CURRENT. Without this,
+    they compare against the real app version (version.py), so they silently
+    break every time a release bumps VERSION to match a hardcoded literal here.
+    """
+    monkeypatch.setattr("gui.updater.VERSION", CURRENT)
 
 
 # ── UpdateInfo.is_newer ───────────────────────────────────────────────────────
