@@ -3,6 +3,7 @@
 import re
 from fastapi import APIRouter, HTTPException
 from ..models.crispr import CRISPRDesignRequest, CRISPRDesignResponse, GuideRNA, CasType
+from ..crispr_offtarget import scan_off_targets
 
 router = APIRouter(prefix="/crispr", tags=["crispr"])
 
@@ -126,6 +127,22 @@ def design_guides(req: CRISPRDesignRequest) -> CRISPRDesignResponse:
     # Sort by on-target score descending, then GC proximity to 50%
     guides.sort(key=lambda g: (-(g.on_target_score or 0), abs((g.gc_content or 0) - 50)))
     guides = guides[:req.max_guides]
+
+    if req.check_off_targets and cas != CasType.CAS13:
+        # Off-target scanning applies to PAM-directed DNA nucleases. Cas13
+        # targets RNA and has no genomic off-target model here, so it is skipped.
+        cas_family = "cas12a" if cas == CasType.CAS12A else "cas9"
+        references = [target, *req.reference_sequences]
+        for g in guides:
+            result = scan_off_targets(
+                g.sequence,
+                references,
+                cas_family=cas_family,
+                max_mismatches=req.max_mismatches,
+            )
+            g.off_target_count = result.total
+            g.off_target_summary = result.summary
+            g.specificity_score = result.specificity_score
 
     return CRISPRDesignResponse(
         target_length=len(target),

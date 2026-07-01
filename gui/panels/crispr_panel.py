@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton,
     QTableWidget, QTableWidgetItem, QLabel, QComboBox, QSpinBox,
     QGroupBox, QProgressBar, QHeaderView, QFileDialog, QMessageBox,
+    QCheckBox,
 )
 from PyQt6.QtGui import QColor
 
@@ -63,6 +64,13 @@ class CRISPRPanel(QWidget):
         self._max_guides = QSpinBox(); self._max_guides.setRange(1, 50); self._max_guides.setValue(10)
         opt_layout.addWidget(self._max_guides)
 
+        self._check_off = QCheckBox("Check off-targets")
+        self._check_off.setToolTip(
+            "Scan the target sequence for near-match sites and score guide "
+            "specificity (MIT). Not available for LwaCas13a (RNA target)."
+        )
+        opt_layout.addWidget(self._check_off)
+
         opt_layout.addStretch()
         layout.addWidget(opt_grp)
 
@@ -94,9 +102,10 @@ class CRISPRPanel(QWidget):
 
         # Results table
         self._table = QTableWidget()
-        self._table.setColumnCount(7)
+        self._table.setColumnCount(9)
         self._table.setHorizontalHeaderLabels(
-            ["#", "Guide Sequence (5'→3')", "PAM", "Position", "Strand", "GC%", "On-target score"]
+            ["#", "Guide Sequence (5'→3')", "PAM", "Position", "Strand", "GC%",
+             "On-target score", "Off-targets", "Specificity"]
         )
         self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -124,7 +133,7 @@ class CRISPRPanel(QWidget):
             cas_type=CasType(cas_str),
             guide_length=20,
             max_guides=self._max_guides.value(),
-            check_off_targets=False,
+            check_off_targets=self._check_off.isChecked(),
         )
         self._worker = Worker(design_guides, req)
         self._worker.result.connect(self._on_design_done)
@@ -145,11 +154,23 @@ class CRISPRPanel(QWidget):
             score = g.on_target_score or 0.0
             color = QColor("#1e3a2e") if score >= 0.6 else QColor("#3d2a00") if score >= 0.4 else QColor("#3d1a1a")
 
+            if g.off_target_summary is not None:
+                s = g.off_target_summary
+                off_text = (
+                    f"{s.get('0', 0)} exact · {s.get('1', 0)} (1mm) · {s.get('2', 0)} (2mm)"
+                )
+                spec_text = f"{g.specificity_score:.0f}" if g.specificity_score is not None else "—"
+            else:
+                off_text = "—"
+                spec_text = "—"
+
             for col, val in enumerate([
                 str(i + 1), g.sequence, g.pam,
                 str(g.position), g.strand,
                 f"{g.gc_content:.0f}%",
                 f"{score:.2f}",
+                off_text,
+                spec_text,
             ]):
                 item = QTableWidgetItem(val)
                 item.setBackground(color)
@@ -170,6 +191,15 @@ class CRISPRPanel(QWidget):
         if not path:
             return
         with open(path, "w") as f:
-            f.write("sequence\tpam\tposition\tstrand\tgc_content\ton_target_score\n")
+            f.write(
+                "sequence\tpam\tposition\tstrand\tgc_content\ton_target_score\t"
+                "off_target_exact\toff_target_1mm\toff_target_2mm\toff_target_3mm\tspecificity\n"
+            )
             for g in self._guides:
-                f.write(f"{g.sequence}\t{g.pam}\t{g.position}\t{g.strand}\t{g.gc_content}\t{g.on_target_score or ''}\n")
+                s = g.off_target_summary or {}
+                f.write(
+                    f"{g.sequence}\t{g.pam}\t{g.position}\t{g.strand}\t{g.gc_content}\t"
+                    f"{g.on_target_score or ''}\t"
+                    f"{s.get('0', '')}\t{s.get('1', '')}\t{s.get('2', '')}\t{s.get('3', '')}\t"
+                    f"{g.specificity_score if g.specificity_score is not None else ''}\n"
+                )

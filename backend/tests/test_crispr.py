@@ -109,3 +109,69 @@ def test_forward_and_reverse_guides(client: TestClient) -> None:
     assert r.status_code == 200
     strands = {g["strand"] for g in r.json()["guides"]}
     assert "+" in strands or "-" in strands  # at least one strand
+
+
+def test_off_targets_disabled_by_default(client: TestClient, tp53_exon7: str) -> None:
+    """Without check_off_targets, guides carry no off-target fields."""
+    r = client.post("/crispr/design", json={
+        "target_sequence": tp53_exon7,
+        "cas_type": "SpCas9",
+        "max_guides": 5,
+    })
+    assert r.status_code == 200
+    for g in r.json()["guides"]:
+        assert g["off_target_count"] is None
+        assert g["off_target_summary"] is None
+        assert g["specificity_score"] is None
+
+
+def test_off_targets_populated(client: TestClient, tp53_exon7: str) -> None:
+    """check_off_targets fills mismatch buckets and a specificity score."""
+    r = client.post("/crispr/design", json={
+        "target_sequence": tp53_exon7,
+        "cas_type": "SpCas9",
+        "max_guides": 5,
+        "check_off_targets": True,
+    })
+    assert r.status_code == 200
+    guides = r.json()["guides"]
+    assert guides
+    for g in guides:
+        assert g["off_target_count"] is not None
+        summary = g["off_target_summary"]
+        assert set(summary.keys()) == {"0", "1", "2", "3"}
+        assert g["off_target_count"] == sum(summary.values())
+        assert 0 <= g["specificity_score"] <= 100
+
+
+def test_off_targets_find_paralog(client: TestClient) -> None:
+    """An exact duplicate site in a reference sequence is flagged as off-target."""
+    guide = "ACGTACGTACGTACGTACGT"
+    target = "GGGG" + guide + "GG" + "CCCC"            # on-target site (protospacer + GG)
+    paralog = "AAAA" + guide + "GG" + "TTTT"           # identical protospacer elsewhere
+    r = client.post("/crispr/design", json={
+        "target_sequence": target,
+        "cas_type": "SpCas9",
+        "max_guides": 20,
+        "check_off_targets": True,
+        "reference_sequences": [paralog],
+    })
+    assert r.status_code == 200
+    hit = next((g for g in r.json()["guides"] if g["sequence"] == guide), None)
+    assert hit is not None
+    assert hit["off_target_summary"]["0"] >= 1  # the paralog's exact match
+    assert hit["specificity_score"] < 100
+
+
+def test_off_targets_skipped_for_cas13(client: TestClient, tp53_exon7: str) -> None:
+    """Cas13 targets RNA; genomic off-target scan does not apply."""
+    r = client.post("/crispr/design", json={
+        "target_sequence": tp53_exon7,
+        "cas_type": "LwaCas13a",
+        "max_guides": 5,
+        "check_off_targets": True,
+    })
+    assert r.status_code == 200
+    for g in r.json()["guides"]:
+        assert g["off_target_count"] is None
+        assert g["specificity_score"] is None
