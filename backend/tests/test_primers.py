@@ -101,3 +101,48 @@ def test_restriction_sites_empty_template(client: TestClient) -> None:
     r = client.post("/primers/restriction_sites", json={"template": "AAAAAAAAAA"})
     assert r.status_code == 200
     assert r.json() == []
+
+
+# ── Circular topology (issue #21) ─────────────────────────────────────────────
+# Synthetic 32 bp construct: an internal EcoRI site (GAATTC at index 11) plus an
+# origin-spanning one — the template ends with "GAATT" and starts with "C", so
+# reading around the junction spells GAATTC at real start index 27.
+CIRCULAR_ECORI = "C" + "A" * 10 + "GAATTC" + "A" * 10 + "GAATT"  # len 32
+
+
+def test_circular_finds_origin_spanning_site(client: TestClient) -> None:
+    linear = client.post("/primers/restriction_sites",
+                         json={"template": CIRCULAR_ECORI, "enzymes": ["EcoRI"]}).json()
+    circular = client.post("/primers/restriction_sites",
+                           json={"template": CIRCULAR_ECORI, "enzymes": ["EcoRI"],
+                                 "is_circular": True}).json()
+    lin_pos = next(s for s in linear if s["enzyme"] == "EcoRI")["positions"]
+    circ_pos = next(s for s in circular if s["enzyme"] == "EcoRI")["positions"]
+    assert lin_pos == [11]              # linear scan misses the wrap
+    assert circ_pos == [11, 27]         # circular scan finds the origin-spanning site
+
+
+def test_circular_digest_n_fragments_for_n_cuts(client: TestClient) -> None:
+    """A circular molecule with N cuts yields N fragments that tile the circle."""
+    r = client.post("/primers/digest",
+                    json={"template": CIRCULAR_ECORI, "enzymes": ["EcoRI"], "is_circular": True})
+    assert r.status_code == 200
+    data = r.json()
+    # Cuts at 17 (internal 11+6) and 1 (origin-spanning (27+6)%32).
+    assert sorted(data["cut_positions"]) == [1, 17]
+    frags = data["fragments"]
+    assert len(frags) == 2  # N cuts -> N fragments
+    assert sum(f["length"] for f in frags) == len(CIRCULAR_ECORI)
+    # The origin-spanning fragment reconstructs across the junction.
+    wrap = next(f for f in frags if f["end"] < f["start"] or f["start"] == 17)
+    assert wrap["sequence"] == CIRCULAR_ECORI[17:] + CIRCULAR_ECORI[:1]
+
+
+def test_linear_digest_unchanged(client: TestClient) -> None:
+    """Default (linear) behavior: N cuts -> N+1 fragments."""
+    r = client.post("/primers/digest",
+                    json={"template": CIRCULAR_ECORI, "enzymes": ["EcoRI"]})
+    data = r.json()
+    assert data["cut_positions"] == [17]        # only the internal site cuts
+    assert len(data["fragments"]) == 2          # N+1 = 2 fragments for 1 cut
+    assert sum(f["length"] for f in data["fragments"]) == len(CIRCULAR_ECORI)

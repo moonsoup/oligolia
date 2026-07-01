@@ -180,9 +180,29 @@ def _pattern(recog: str) -> str:
     return "".join(IUPAC.get(c, c) for c in recog.upper())
 
 
+def _find_sites(template: str, recog: str, is_circular: bool) -> list[int]:
+    """0-indexed start positions of ``recog`` in ``template``.
+
+    When ``is_circular`` is set, also finds recognition sites that span the
+    origin junction (last k-1 bases + first k-1 bases, k = recognition length),
+    reporting them at their real start index near the end of the template.
+    """
+    pattern = _pattern(recog)
+    positions = [m.start() for m in re.finditer(f"(?={pattern})", template)]
+    k, n = len(recog), len(template)
+    if is_circular and k > 1 and n >= k:
+        wrap = template[-(k - 1):] + template[:k - 1]
+        for m in re.finditer(f"(?={pattern})", wrap):
+            off = m.start()
+            if off <= k - 2:  # starts in the tail => crosses the origin
+                positions.append(n - (k - 1) + off)
+    return sorted(set(positions))
+
+
 class RestrictionRequest(BaseModel):
     template: str
     enzymes: list[str] | None = None
+    is_circular: bool = False
 
 
 @router.post("/restriction_sites", response_model=list[RestrictionSite])
@@ -194,8 +214,7 @@ def restriction_sites(req: RestrictionRequest) -> list[RestrictionSite]:
                       if not enzymes or k in enzymes}
     results = []
     for name, recog in target_enzymes.items():
-        pattern = _pattern(recog)
-        positions = [m.start() for m in re.finditer(f"(?={pattern})", template)]
+        positions = _find_sites(template, recog, req.is_circular)
         if positions:
             results.append(RestrictionSite(
                 enzyme=name,
@@ -210,6 +229,7 @@ def restriction_sites(req: RestrictionRequest) -> list[RestrictionSite]:
 class DigestRequest(BaseModel):
     template: str
     enzymes: list[str]
+    is_circular: bool = False
 
 
 class DigestFragment(BaseModel):
@@ -236,28 +256,49 @@ def digest(req: DigestRequest) -> DigestResult:
     if unknown:
         raise HTTPException(400, f"Unknown enzymes: {unknown}. Supported: {sorted(RESTRICTION_ENZYMES)}")
 
+    n = len(template)
     # Collect all cut positions across all requested enzymes
     cut_positions: list[int] = []
     for enzyme in req.enzymes:
         recog = RESTRICTION_ENZYMES[enzyme]
-        pattern = _pattern(recog)
-        for m in re.finditer(f"(?={pattern})", template):
-            pos = m.start() + len(recog)  # cut after recognition sequence
-            if pos not in cut_positions:
-                cut_positions.append(pos)
+        for s in _find_sites(template, recog, req.is_circular):
+            pos = s + len(recog)  # cut after recognition sequence
+            if req.is_circular:
+                pos %= n  # origin-spanning site cuts back into the head
+            cut_positions.append(pos)
 
     cut_positions = sorted(set(cut_positions))
 
-    # Build fragments from cut positions
-    boundaries = [0] + cut_positions + [len(template)]
-    fragments = []
-    for i in range(len(boundaries) - 1):
-        start, end = boundaries[i], boundaries[i + 1]
-        seq = template[start:end]
-        if seq:
-            fragments.append(DigestFragment(
-                start=start, end=end, length=len(seq), sequence=seq,
-            ))
+    fragments: list[DigestFragment] = []
+    if req.is_circular:
+        # A circular molecule with N cuts yields N fragments (no free ends);
+        # the fragment from the last cut wraps the origin back to the first.
+        if not cut_positions:
+            fragments.append(DigestFragment(start=0, end=n, length=n, sequence=template))
+        else:
+            count = len(cut_positions)
+            for i in range(count):
+                start = cut_positions[i]
+                end = cut_positions[(i + 1) % count]
+                if i < count - 1:
+                    seq = template[start:end]
+                    length = end - start
+                else:  # origin-spanning fragment
+                    seq = template[start:] + template[:end]
+                    length = (n - start) + end
+                fragments.append(DigestFragment(
+                    start=start, end=end, length=length, sequence=seq,
+                ))
+    else:
+        # Linear: N cuts yield N+1 fragments, including the two end pieces.
+        boundaries = [0] + cut_positions + [n]
+        for i in range(len(boundaries) - 1):
+            start, end = boundaries[i], boundaries[i + 1]
+            seq = template[start:end]
+            if seq:
+                fragments.append(DigestFragment(
+                    start=start, end=end, length=len(seq), sequence=seq,
+                ))
 
     fragments.sort(key=lambda f: -f.length)
     return DigestResult(
