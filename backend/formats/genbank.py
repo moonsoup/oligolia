@@ -51,6 +51,7 @@ def _to_sequence(r: SeqRecord) -> Sequence:
         annotations=annotations,
         accession=r.id,
         source_db="genbank",
+        is_circular=r.annotations.get("topology") == "circular",
     )
 
 
@@ -78,6 +79,7 @@ def write_genbank(sequences: list[Sequence]) -> str:
         seq = Seq(s.seq)
         r = SeqRecord(seq, id=s.accession or s.id, name=s.name or s.id[:16], description=s.description)
         r.annotations["molecule_type"] = s.molecule_type.value
+        r.annotations["topology"] = "circular" if s.is_circular else "linear"
         for ann in s.annotations:
             strand_val = 1 if ann.strand == Strand.PLUS else -1 if ann.strand == Strand.MINUS else 0
             feat = SeqFeature(

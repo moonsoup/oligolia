@@ -1,6 +1,6 @@
 """Tests for file format parsers using real biological file content."""
 
-from ..formats import read_fasta, read_fastq, read_genbank, write_fasta
+from ..formats import read_fasta, read_fastq, read_genbank, write_fasta, write_genbank
 from ..formats import parse_vcf, write_vcf, parse_gff3, write_gff3
 from ..models.sequence import MoleculeType
 
@@ -74,6 +74,40 @@ ORIGIN
     gene_features = [a for a in s.annotations if a.feature_type == "gene"]
     assert len(gene_features) >= 1
     assert gene_features[0].qualifiers.get("gene") == "BRCA2"
+    assert s.is_circular is False  # LOCUS says "linear"
+
+
+def test_read_genbank_circular_topology() -> None:
+    """A circular LOCUS line sets is_circular=True."""
+    gb_content = """LOCUS       pUC19                   60 bp    DNA     circular SYN 01-JAN-2024
+DEFINITION  Synthetic circular plasmid (fragment).
+ACCESSION   pUC19
+FEATURES             Location/Qualifiers
+     misc_feature    1..60
+                     /note="test"
+ORIGIN
+        1 atgcctattg gatccaaaga gaggccaaca ttttttgaaa tttttaagac acgctgcaac
+//
+"""
+    s = read_genbank(gb_content)[0]
+    assert s.is_circular is True
+
+
+def test_genbank_topology_roundtrip() -> None:
+    """Topology survives a full write -> read cycle in both directions."""
+    from ..models.sequence import Sequence
+
+    circ = Sequence(id="plasmid1", name="plasmid1", seq="ATGCATGCATGCATGCATGC",
+                    molecule_type=MoleculeType.DNA, is_circular=True)
+    out = write_genbank([circ])
+    assert "circular" in out.split("\n", 1)[0].lower()  # LOCUS line
+    assert read_genbank(out)[0].is_circular is True
+
+    lin = Sequence(id="frag1", name="frag1", seq="ATGCATGCATGCATGCATGC",
+                   molecule_type=MoleculeType.DNA, is_circular=False)
+    out_lin = write_genbank([lin])
+    assert "linear" in out_lin.split("\n", 1)[0].lower()
+    assert read_genbank(out_lin)[0].is_circular is False
 
 
 def test_write_fasta_line_wrap() -> None:
