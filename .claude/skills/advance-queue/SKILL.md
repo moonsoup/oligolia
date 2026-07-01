@@ -94,12 +94,47 @@ python3 scripts/loop_health_check.py --tmux --ping
 - Exit 0 → remote progressing
 - Exit 1 → same issue >10 min; `--ping` auto-sends a kick message
 - Exit 2 → VPS unreachable
+- Exit 3 → remote is logged out (OAuth token expired/invalid) — see below
 
 **If tmux shows an idle `❯` prompt:**
 
 ```bash
 bash scripts/remote_send.sh "Resume working the issue queue. gh issue list -R moonsoup/oligolia --state open. Push to main after each fix — do not bump version.py or tag a release."
 ```
+
+**If exit code is 3 (logged out):**
+
+Copying the local machine's OAuth credential file into the container does **not**
+work — tokens are validated server-side and a straight file copy comes back
+"Not logged in" even after a fresh restart. The remote needs its own real
+`/login` completed through a browser. Claude Code driving this loop should use
+`claude-in-chrome` to do it:
+
+```bash
+python3 scripts/loop_health_check.py --check-auth
+```
+
+This sends `/login`, selects the subscription method, and prints the OAuth
+`claude.com/cai/oauth/authorize?...` URL. Then:
+
+1. Open that URL in Chrome (`mcp__claude-in-chrome__navigate`).
+2. **Check the signed-in account shown at the bottom of the authorize page
+   before clicking anything.** It must be `moonsoup@gmail.com` — the project
+   owner's account, matching the local "`moonsoup@gmail.com's Organization`"
+   banner Claude Code already shows here. Granting OAuth is an explicit-permission
+   action — if the browser is signed into a different account, stop and tell
+   the user rather than authorizing the wrong identity.
+3. Click **Authorize** — this redirects to `platform.claude.com/oauth/code/callback`
+   and displays an authentication code.
+4. Read that code off the page (`mcp__claude-in-chrome__get_page_text` or a
+   screenshot) and complete sign-in:
+   ```bash
+   python3 scripts/loop_health_check.py --complete-auth "<code>"
+   ```
+5. Re-send the resume message (same command as the idle-prompt case above).
+
+Never print the auth code or credential file contents in terminal output —
+pipe/relay them directly between tools instead of echoing them.
 
 ---
 
