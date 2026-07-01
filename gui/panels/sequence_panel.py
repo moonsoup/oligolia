@@ -21,6 +21,7 @@ from Bio.Seq import Seq
 from backend.models.sequence import Sequence, MoleculeType, Annotation
 from backend.formats import read_fasta, read_fastq, read_genbank, VENDORS, export_order
 from gui.history import UndoStack
+from gui.panels.feature_colors import feature_color_map
 import re
 
 # Edit operations that mutate the active sequence in place (and are undoable).
@@ -202,8 +203,6 @@ class ReadingFrameHighlighter(QSyntaxHighlighter):
 
 class FeatureHighlighter(QSyntaxHighlighter):
     """Background-shades annotated gene features (CDS, exon, promoter, …) by type."""
-    PALETTE = ["#1e3a5f", "#5f1e3a", "#3a5f1e", "#5f4a1e",
-               "#1e5f4a", "#4a1e5f", "#5f1e1e", "#274060"]
 
     def __init__(self, document) -> None:
         super().__init__(document)
@@ -212,8 +211,7 @@ class FeatureHighlighter(QSyntaxHighlighter):
 
     def setAnnotations(self, annotations: list[Annotation]) -> None:
         self._annotations = annotations or []
-        types = sorted({a.feature_type for a in self._annotations})
-        self._color_map = {t: QColor(self.PALETTE[i % len(self.PALETTE)]) for i, t in enumerate(types)}
+        self._color_map = feature_color_map(self._annotations)
         self.rehighlight()
 
     @property
