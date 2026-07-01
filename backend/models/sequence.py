@@ -34,6 +34,7 @@ class Sequence(BaseModel):
     source_db: str = ""
     accession: str = ""
     length: int = 0
+    is_circular: bool = False
 
     def model_post_init(self, __context: Any) -> None:
         if not self.length:
