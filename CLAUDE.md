@@ -79,10 +79,10 @@ A Claude Code instance can run continuously on the VPS inside the shared `claude
 container, working through `gh issue list -R moonsoup/oligolia` autonomously, the same
 mechanism used for atp-siege (see `~/Software/bio_battle/CLAUDE.md` for the full
 architecture). The container is **shared across projects** via an active-project marker —
-see `~/Software/bio_battle/scripts/remote_switch.sh oligolia` to point it here, and
-`remote_switch.sh atpsiege` to hand it back.
+see `~/Software/Friday_tools/remote_loop/scripts/remote_switch.sh oligolia` to point it
+here, and `remote_switch.sh atpsiege` to hand it back.
 
-**Quick reference (run from `~/Software/bio_battle/`, the scripts live there):**
+**Quick reference (run from `~/Software/Friday_tools/remote_loop/`, the scripts live there):**
 
 | What | Command |
 |---|---|

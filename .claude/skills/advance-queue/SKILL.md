@@ -18,7 +18,7 @@ release-cutting to a deliberate, separate step (see `CLAUDE.md` rule 3).
 
 ## Remote server quick reference
 
-Run from `~/Software/bio_battle/` — the control scripts are shared across projects:
+Run from `~/Software/Friday_tools/remote_loop/` — the control scripts are shared across projects:
 
 | What | Command |
 |---|---|
@@ -89,7 +89,7 @@ diffs expected vs actual output, and traces failures to file:line before filing.
 python3 scripts/loop_health_check.py --tmux --ping
 ```
 
-(Run from `~/Software/bio_battle/` — shared script, parameterized by `$CONTAINER`/`$SESSION`/`$VPS`.)
+(Run from `~/Software/Friday_tools/remote_loop/` — shared script, parameterized by `$CONTAINER`/`$SESSION`/`$VPS`.)
 
 - Exit 0 → remote progressing
 - Exit 1 → same issue >10 min; `--ping` auto-sends a kick message
