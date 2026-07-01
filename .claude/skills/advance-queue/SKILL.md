@@ -138,6 +138,33 @@ pipe/relay them directly between tools instead of echoing them.
 
 ---
 
+## Step 5 — DESIGN REVIEW (every ~4-5 iterations, or after a batch of new UI lands)
+
+Functional verification (Step 2) checks that a fix works, not that the app
+still looks and feels professional as new surface area (plasmid map,
+feature table, assembly tab, etc.) accumulates. Every few loop iterations —
+not every single one — do a design pass:
+
+1. Launch the real app offscreen and screenshot the panels that changed
+   recently (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, drive the
+   actual widget, `grab().save()` — same pattern as Step 2's GUI
+   verification, just looking at the whole panel rather than one fix).
+2. Invoke the `frontend-design` skill against those screenshots — its
+   guidance on distinctive, intentional visual design and avoiding
+   templated-default clutter applies here even though Oligolia is a desktop
+   Qt app, not a web frontend: look for crowded/unbalanced layouts,
+   inconsistent spacing or type treatment between panels, and controls that
+   don't read as purposeful.
+3. Prioritize ease of use over feature density — if a panel added this
+   cycle makes the app feel more cluttered rather than more capable, that's
+   worth a follow-up issue even though nothing is "broken."
+4. File findings as normal GitHub issues (`bug` for regressions in
+   existing polish, `enhancement` for new cleanup work) rather than fixing
+   inline — keeps this step fast and matches the rest of the loop's
+   verify-then-file pattern.
+
+---
+
 ## Rules
 
 - **Never close without running the matching verification first** — only test/screenshot evidence counts.
