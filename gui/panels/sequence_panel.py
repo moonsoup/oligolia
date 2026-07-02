@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QListWidget, QListWidgetItem,
     QTextEdit, QLabel, QPushButton, QComboBox, QLineEdit, QGroupBox,
     QFormLayout, QSpinBox, QMessageBox, QFileDialog, QApplication,
-    QToolBar, QCheckBox,
+    QToolBar, QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import (
@@ -363,6 +363,25 @@ class SequencePanel(QWidget):
         self._feature_highlighter = FeatureHighlighter(self._seq_display.document())
         right_layout.addWidget(self._seq_display)
 
+        # Feature table (issue #31) — browse the selected sequence's annotations.
+        feat_grp = QGroupBox("Features")
+        feat_layout = QVBoxLayout(feat_grp)
+        self._feature_empty = QLabel("No features annotated")
+        self._feature_empty.setObjectName("subheading")
+        feat_layout.addWidget(self._feature_empty)
+        self._feature_table = QTableWidget()
+        self._feature_table.setColumnCount(5)
+        self._feature_table.setHorizontalHeaderLabels(
+            ["Feature Type", "Strand", "Start", "End", "Qualifiers"])
+        self._feature_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self._feature_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._feature_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._feature_table.setSortingEnabled(True)
+        self._feature_table.setMaximumHeight(160)
+        self._feature_table.hide()
+        feat_layout.addWidget(self._feature_table)
+        right_layout.addWidget(feat_grp)
+
         # Result display — separate document with its own highlighter
         self._result_display = QTextEdit()
         self._result_display.setReadOnly(True)
@@ -592,6 +611,42 @@ class SequencePanel(QWidget):
         self._on_frame_changed()
         self._feature_highlighter.setAnnotations(seq.annotations if self._feature_check.isChecked() else [])
         self._update_feature_legend()
+        self._populate_feature_table()
+
+    def _populate_feature_table(self) -> None:
+        """Fill the feature table from the active sequence's annotations."""
+        anns = self._active.annotations if self._active else []
+        tbl = self._feature_table
+        tbl.setSortingEnabled(False)
+        tbl.setRowCount(0)
+        if not anns:
+            tbl.hide()
+            self._feature_empty.show()
+            tbl.setSortingEnabled(True)
+            return
+        self._feature_empty.hide()
+        tbl.show()
+        cmap = feature_color_map(anns)  # same colors as FeatureHighlighter
+        tbl.setRowCount(len(anns))
+        for i, a in enumerate(anns):
+            label = (a.qualifiers.get("label") or a.qualifiers.get("gene")
+                     or a.qualifiers.get("product") or a.qualifiers.get("note") or "")
+            summary = str(label)
+            if a.qualifiers.get("auto_detected") == "true":
+                summary = (summary + "  ·  auto-detected").strip()
+
+            type_item = QTableWidgetItem(a.feature_type)
+            type_item.setBackground(cmap[a.feature_type])
+            strand_item = QTableWidgetItem(a.strand.value)
+            # Numeric sort for coordinates: store ints in the display role.
+            start_item = QTableWidgetItem()
+            start_item.setData(Qt.ItemDataRole.DisplayRole, a.start)
+            end_item = QTableWidgetItem()
+            end_item.setData(Qt.ItemDataRole.DisplayRole, a.end)
+            for col, item in enumerate(
+                    [type_item, strand_item, start_item, end_item, QTableWidgetItem(summary)]):
+                tbl.setItem(i, col, item)
+        tbl.setSortingEnabled(True)
 
     def _on_circular_toggled(self, checked: bool) -> None:
         """Persist the topology change onto the active sequence + list tooltip."""
