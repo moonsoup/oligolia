@@ -10,8 +10,10 @@ from PyQt6.QtWidgets import (
     QTextEdit, QLabel, QPushButton, QComboBox, QLineEdit, QGroupBox,
     QFormLayout, QSpinBox, QMessageBox, QFileDialog, QApplication,
     QToolBar, QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView,
+    QDialog, QDialogButtonBox,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QSettings, pyqtSignal
+from datetime import datetime, timezone
 from PyQt6.QtGui import (
     QFont, QColor, QTextCharFormat, QSyntaxHighlighter, QTextCursor,
     QKeySequence, QShortcut, QPainter, QPen,
@@ -285,6 +287,56 @@ class FeatureMinimap(QWidget):
         nearest = min(self._annotations, key=lambda a: abs(self._y_for(a.start) - y))
         if abs(self._y_for(nearest.start) - y) <= 10:  # click near a tick
             self.feature_clicked.emit(nearest.start, nearest.end)
+
+
+# Bump this when TERMS.md changes materially so users re-accept (issue #28).
+# Keep in sync with the "terms-version" marker in TERMS.md.
+_TERMS_VERSION = "1"
+_TERMS_URL = "https://github.com/moonsoup/oligolia/blob/main/TERMS.md"
+
+
+class TermsDialog(QDialog):
+    """One-time Terms-of-Use acceptance for synthesis export (issue #28)."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Export for Synthesis — Terms of Use")
+        self.setMinimumWidth(460)
+        layout = QVBoxLayout(self)
+
+        summary = QLabel(
+            "<b>Before exporting a synthesis order file, please confirm:</b>"
+            "<ul>"
+            "<li>This <b>generates a file only</b> — Oligolia does <b>not</b> submit, "
+            "transmit, or place any order with any vendor.</li>"
+            "<li>You submit the order yourself by uploading the file on the "
+            "vendor's own portal, under their terms and pricing.</li>"
+            "<li>Oligolia does <b>not</b> verify sequence correctness, "
+            "manufacturability, legality, or safety — <b>review every sequence "
+            "before ordering</b> and comply with biosecurity screening and law.</li>"
+            "</ul>"
+            f'Full terms: <a href="{_TERMS_URL}">TERMS.md</a>'
+        )
+        summary.setWordWrap(True)
+        summary.setTextFormat(Qt.TextFormat.RichText)
+        summary.setOpenExternalLinks(True)
+        layout.addWidget(summary)
+
+        self._accept_check = QCheckBox("I have read and accept the Terms of Use")
+        self._accept_check.toggled.connect(self._on_toggle)
+        layout.addWidget(self._accept_check)
+
+        self._buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok)
+        self._buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Accept and Export")
+        self._buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
+        self._buttons.accepted.connect(self.accept)
+        self._buttons.rejected.connect(self.reject)
+        layout.addWidget(self._buttons)
+
+    def _on_toggle(self, checked: bool) -> None:
+        # Explicit affirmative action required — OK stays disabled until checked.
+        self._buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(checked)
 
 
 class SequencePanel(QWidget):
@@ -937,10 +989,31 @@ class SequencePanel(QWidget):
             pos_str += ("…" if len(positions) > 20 else "")
             self._result_display.setPlainText(f"// Motif '{motif}' — {len(positions)} occurrences\nPositions: {pos_str}")
 
+    def _ensure_terms_accepted(self) -> bool:
+        """Gate synthesis export behind one-time Terms acceptance (issue #28).
+
+        Returns True if the current terms version has already been accepted or
+        the user accepts now; False if they decline. Re-prompts only when
+        _TERMS_VERSION changes.
+        """
+        settings = QSettings("Oligolia", "Oligolia")
+        if settings.value("synthesis_terms_version", "") == _TERMS_VERSION:
+            return True
+        if not self._show_terms_dialog():
+            return False
+        settings.setValue("synthesis_terms_version", _TERMS_VERSION)
+        settings.setValue("synthesis_terms_accepted_at", datetime.now(timezone.utc).isoformat())
+        return True
+
+    def _show_terms_dialog(self) -> bool:
+        return TermsDialog(self).exec() == QDialog.DialogCode.Accepted
+
     def _export_synthesis(self) -> None:
         if not self._active:
             QMessageBox.warning(self, "No sequence", "Select a sequence first.")
             return
+        if not self._ensure_terms_accepted():
+            return  # user declined the terms; nothing is exported
         vendor = self._vendor_combo.currentData()
         start, end = self._sel_start.value(), self._sel_end.value()
         if start == end == 0:
