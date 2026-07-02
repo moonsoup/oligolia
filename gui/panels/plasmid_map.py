@@ -23,7 +23,10 @@ from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import QWidget
 
 from backend.models.sequence import Annotation, Sequence, Strand
+from backend.routers.primers import RestrictionRequest, restriction_sites
 from gui.panels.feature_colors import feature_color_map
+
+_CUT_COLOR = "#b91c1c"  # distinct red for enzyme cut ticks/labels
 
 # Candidate tick spacings (bp); the smallest one giving <= ~12 ticks is used.
 _TICK_STEPS = [50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000]
@@ -67,6 +70,8 @@ class PlasmidMapWidget(QWidget):
         self._is_circular = False
         self._lanes: list[tuple[Annotation, int]] = []
         self._color_map: dict[str, QColor] = {}
+        self._sites: list = []  # RestrictionSite results
+        self._unique_only = True  # SnapGene default: show only single cutters
         self.setMinimumSize(240, 240)
 
     def set_sequence(self, seq: Sequence) -> None:
@@ -76,6 +81,17 @@ class PlasmidMapWidget(QWidget):
         self._is_circular = seq.is_circular
         self._lanes = _assign_lanes(seq.annotations)
         self._color_map = feature_color_map(seq.annotations)
+        # Reuse the backend restriction search (circular-aware, #21) in-process.
+        try:
+            self._sites = restriction_sites(
+                RestrictionRequest(template=seq.seq, is_circular=seq.is_circular))
+        except Exception:
+            self._sites = []
+        self.update()
+
+    def set_unique_cutters_only(self, unique_only: bool) -> None:
+        """Toggle between unique cutters (default) and all restriction sites."""
+        self._unique_only = unique_only
         self.update()
 
     def _point(self, cx: float, cy: float, radius: float, pos: int) -> QPointF:
@@ -88,7 +104,7 @@ class PlasmidMapWidget(QWidget):
 
         w, h = self.width(), self.height()
         cx, cy = w / 2, h / 2
-        radius = min(w, h) / 2 - 34  # leave a margin for tick labels
+        radius = min(w, h) / 2 - 50  # margin for bp-ruler + enzyme labels
 
         if self._length <= 0 or radius <= 0:
             painter.end()
@@ -117,6 +133,9 @@ class PlasmidMapWidget(QWidget):
 
         # ── Feature arcs (issue #24) ──────────────────────────────────────
         self._draw_features(painter, cx, cy, radius)
+
+        # ── Restriction cut sites (issue #25) ─────────────────────────────
+        self._draw_cut_sites(painter, cx, cy, radius)
 
         # ── Centre label: name + size + topology ──────────────────────────
         painter.setPen(QPen(QColor("#e2e8f0"), 1))
@@ -175,6 +194,54 @@ class PlasmidMapWidget(QWidget):
                 | Qt.AlignmentFlag.AlignVCenter,
                 str(label)[:24],
             )
+
+    def _draw_cut_sites(self, painter: QPainter, cx: float, cy: float, radius: float) -> None:
+        """Draw restriction cut-site ticks + enzyme labels on the outer edge.
+
+        Enzyme labels are stacked in left/right side columns with leader lines
+        back to their ticks, so densely-clustered cutters (e.g. a plasmid MCS)
+        stay legible instead of drawing over each other.
+        """
+        display: list[tuple[str, int]] = []
+        for site in self._sites:
+            if self._unique_only and site.count != 1:
+                continue
+            for pos in site.positions:
+                display.append((site.enzyme, pos))
+        if not display:
+            return
+
+        color = QColor(_CUT_COLOR)
+        painter.setFont(QFont("Inter,Helvetica,Arial", 8))
+
+        # 1) Radial ticks at each cut position.
+        painter.setPen(QPen(color, 1))
+        right: list[tuple[float, str, QPointF]] = []
+        left: list[tuple[float, str, QPointF]] = []
+        for enzyme, pos in display:
+            painter.drawLine(self._point(cx, cy, radius, pos),
+                             self._point(cx, cy, radius + 9, pos))
+            tip = self._point(cx, cy, radius + 9, pos)
+            (right if tip.x() >= cx else left).append((tip.y(), enzyme, tip))
+
+        # 2) Side-stacked labels with leader lines (vertical de-collision).
+        gap = 14
+        for side, column in (("R", right), ("L", left)):
+            column.sort(key=lambda t: t[0])
+            col_x = cx + radius + 18 if side == "R" else cx - radius - 18
+            last_y = -1e9
+            for _, enzyme, tip in column:
+                y = max(tip.y(), last_y + gap)
+                last_y = y
+                painter.setPen(QPen(color, 1))
+                painter.drawLine(tip, QPointF(col_x, y))
+                if side == "R":
+                    box = QRectF(col_x + 2, y - 8, 120, 16)
+                    align = Qt.AlignmentFlag.AlignLeft
+                else:
+                    box = QRectF(col_x - 122, y - 8, 120, 16)
+                    align = Qt.AlignmentFlag.AlignRight
+                painter.drawText(box, align | Qt.AlignmentFlag.AlignVCenter, enzyme)
 
     def _draw_arrowhead(self, painter: QPainter, cx: float, cy: float, r: float,
                         pos: int, direction: int, color: QColor) -> None:
