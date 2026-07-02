@@ -435,6 +435,10 @@ class SequencePanel(QWidget):
         # (dual-viewer pattern); linear sequences hide it entirely (#27).
         self._plasmid_map = PlasmidMapWidget()
         self._plasmid_map.hide()
+        # Bidirectional sync (#26): map arc click -> select in sequence view;
+        # sequence-view selection -> glow the overlapping map arc(s).
+        self._plasmid_map.feature_clicked.connect(self._jump_to_span)
+        self._seq_display.selectionChanged.connect(self._on_seq_selection_changed)
 
         viewer_splitter = QSplitter(Qt.Orientation.Horizontal)
         viewer_splitter.addWidget(linear_view)
@@ -600,6 +604,14 @@ class SequencePanel(QWidget):
             return
         self._select_span(self._sel_start.value(), self._sel_end.value())
         self._seq_display.setFocus()
+
+    def _on_seq_selection_changed(self) -> None:
+        """Glow the map arc(s) overlapping the current sequence-view selection."""
+        cursor = self._seq_display.textCursor()
+        if cursor.hasSelection():
+            self._plasmid_map.set_highlight((cursor.selectionStart(), cursor.selectionEnd()))
+        else:
+            self._plasmid_map.set_highlight(None)
 
     def _jump_to_span(self, start: int, end: int) -> None:
         """Select+scroll to [start, end) and mirror it in the Select spinboxes."""

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import math
 
-from PyQt6.QtCore import QPointF, QRectF, Qt
+from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import QWidget
 
@@ -61,6 +61,8 @@ def _assign_lanes(annotations: list[Annotation]) -> list[tuple[Annotation, int]]
 class PlasmidMapWidget(QWidget):
     """Custom-painted circular map of a plasmid backbone."""
 
+    feature_clicked = pyqtSignal(int, int)  # (start, end) of a clicked arc
+
     _LANE_WIDTH = 9  # arc thickness / lane spacing (px)
 
     def __init__(self) -> None:
@@ -72,7 +74,47 @@ class PlasmidMapWidget(QWidget):
         self._color_map: dict[str, QColor] = {}
         self._sites: list = []  # RestrictionSite results
         self._unique_only = True  # SnapGene default: show only single cutters
+        self._highlight: tuple[int, int] | None = None  # selected span to glow
         self.setMinimumSize(240, 240)
+
+    def set_highlight(self, span: tuple[int, int] | None) -> None:
+        """Glow the arc(s) overlapping [start, end); None clears it."""
+        self._highlight = span
+        self.update()
+
+    def _ring_radius(self) -> float:
+        return min(self.width(), self.height()) / 2 - 50  # margin for labels
+
+    def _lane_radius(self, lane: int, ring: float) -> float:
+        return ring - 12 - lane * (self._LANE_WIDTH + 2)
+
+    def _overlaps_highlight(self, ann: Annotation) -> bool:
+        if self._highlight is None:
+            return False
+        hs, he = self._highlight
+        return not (ann.end <= hs or ann.start >= he)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        """Hit-test feature arcs; emit the clicked feature's span (issue #26)."""
+        if not self._lanes or not self._length:
+            return
+        ring = self._ring_radius()
+        dx = event.position().x() - self.width() / 2
+        dy = event.position().y() - self.height() / 2
+        r_click = math.hypot(dx, dy)
+        theta = math.atan2(dx, -dy)  # 0 at top (12 o'clock), clockwise positive
+        if theta < 0:
+            theta += 2 * math.pi
+        pos = theta / (2 * math.pi) * self._length
+
+        best, best_dr = None, 1e9
+        for ann, lane in self._lanes:
+            r_lane = self._lane_radius(lane, ring)
+            dr = abs(r_click - r_lane)
+            if dr <= self._LANE_WIDTH and ann.start <= pos <= ann.end and dr < best_dr:
+                best, best_dr = ann, dr
+        if best is not None:
+            self.feature_clicked.emit(best.start, best.end)
 
     def set_sequence(self, seq: Sequence) -> None:
         """Point the map at a sequence (intended for circular ones)."""
@@ -104,7 +146,7 @@ class PlasmidMapWidget(QWidget):
 
         w, h = self.width(), self.height()
         cx, cy = w / 2, h / 2
-        radius = min(w, h) / 2 - 50  # margin for bp-ruler + enzyme labels
+        radius = self._ring_radius()  # margin for bp-ruler + enzyme labels
 
         if self._length <= 0 or radius <= 0:
             painter.end()
@@ -153,7 +195,7 @@ class PlasmidMapWidget(QWidget):
         """Draw each annotation as a colored arc + strand arrowhead + label."""
         label_font = QFont("Inter,Helvetica,Arial", 8)
         for ann, lane in self._lanes:
-            r = radius - 12 - lane * (self._LANE_WIDTH + 2)
+            r = self._lane_radius(lane, radius)
             if r < radius * 0.35:  # too many overlapping lanes to fit; skip inner ones
                 continue
             color = self._color_map.get(ann.feature_type, QColor("#94a3b8"))
@@ -164,6 +206,12 @@ class PlasmidMapWidget(QWidget):
             start_angle = (90.0 - 360.0 * ann.start / self._length) * 16
             span_angle = -(360.0 * span_bp / self._length) * 16
             rect = QRectF(cx - r, cy - r, 2 * r, 2 * r)
+            # Selection glow (issue #26): a wide translucent halo under arcs that
+            # overlap the current sequence-view selection.
+            if self._overlaps_highlight(ann):
+                painter.setPen(QPen(QColor(250, 204, 21, 160), self._LANE_WIDTH + 8,
+                                    Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap))
+                painter.drawArc(rect, round(start_angle), round(span_angle))
             painter.setPen(QPen(color, self._LANE_WIDTH, Qt.PenStyle.SolidLine,
                                 Qt.PenCapStyle.FlatCap))
             painter.setBrush(Qt.BrushStyle.NoBrush)
