@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import (
     QFont, QColor, QTextCharFormat, QSyntaxHighlighter, QTextCursor,
-    QKeySequence, QShortcut,
+    QKeySequence, QShortcut, QPainter, QPen,
 )
 
 from Bio.Seq import Seq
@@ -235,6 +235,57 @@ class FeatureHighlighter(QSyntaxHighlighter):
             self.setFormat(start, end - start, fmt)
 
 
+class FeatureMinimap(QWidget):
+    """Slim vertical map of feature ticks along the full sequence length (#33).
+
+    One colored tick per annotation at ``start / length`` down the widget,
+    independent of scroll position, so off-screen features stay visible.
+    Clicking a tick emits the feature's span for the panel to jump to.
+    """
+
+    feature_clicked = pyqtSignal(int, int)  # (start, end)
+    _MARGIN = 6
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._annotations: list[Annotation] = []
+        self._length = 1
+        self._color_map: dict[str, QColor] = {}
+        self.setFixedWidth(22)
+        self.setToolTip("Feature map — click a tick to jump to that feature")
+
+    def set_features(self, annotations: list[Annotation], length: int) -> None:
+        self._annotations = annotations or []
+        self._length = max(length, 1)
+        self._color_map = feature_color_map(self._annotations)
+        self.update()
+
+    def _y_for(self, position: int) -> int:
+        usable = max(self.height() - 2 * self._MARGIN, 1)
+        frac = min(max(position / self._length, 0.0), 1.0)
+        return self._MARGIN + int(frac * usable)
+
+    def paintEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        cx = self.width() // 2
+        painter.setPen(QPen(QColor("#334155"), 2))
+        painter.drawLine(cx, self._MARGIN, cx, self.height() - self._MARGIN)
+        for ann in self._annotations:
+            painter.setPen(QPen(self._color_map.get(ann.feature_type, QColor("#94a3b8")), 3))
+            y = self._y_for(ann.start)
+            painter.drawLine(cx - 7, y, cx + 7, y)
+        painter.end()
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        if not self._annotations:
+            return
+        y = event.position().y()
+        nearest = min(self._annotations, key=lambda a: abs(self._y_for(a.start) - y))
+        if abs(self._y_for(nearest.start) - y) <= 10:  # click near a tick
+            self.feature_clicked.emit(nearest.start, nearest.end)
+
+
 class SequencePanel(QWidget):
     sequence_selected = pyqtSignal(object)  # emits Sequence
 
@@ -361,7 +412,14 @@ class SequencePanel(QWidget):
         self._prot_highlighter: ProteinHighlighter | None = None
         self._frame_highlighter = ReadingFrameHighlighter(self._seq_display.document())
         self._feature_highlighter = FeatureHighlighter(self._seq_display.document())
-        right_layout.addWidget(self._seq_display)
+        # Vertical feature minimap beside the sequence view (issue #33).
+        self._minimap = FeatureMinimap()
+        self._minimap.feature_clicked.connect(self._jump_to_span)
+        seq_row = QHBoxLayout()
+        seq_row.setContentsMargins(0, 0, 0, 0)
+        seq_row.addWidget(self._minimap)
+        seq_row.addWidget(self._seq_display)
+        right_layout.addLayout(seq_row)
 
         # Feature table (issue #31) — browse the selected sequence's annotations.
         feat_grp = QGroupBox("Features")
@@ -522,6 +580,14 @@ class SequencePanel(QWidget):
         self._select_span(self._sel_start.value(), self._sel_end.value())
         self._seq_display.setFocus()
 
+    def _jump_to_span(self, start: int, end: int) -> None:
+        """Select+scroll to [start, end) and mirror it in the Select spinboxes."""
+        if not self._active:
+            return
+        self._select_span(int(start), int(end))
+        self._sel_start.setValue(int(start))
+        self._sel_end.setValue(int(end))
+
     def _on_feature_row_selected(self) -> None:
         """Clicking a feature row selects/scrolls to its span (issue #32)."""
         rows = self._feature_table.selectionModel().selectedRows()
@@ -530,10 +596,7 @@ class SequencePanel(QWidget):
         r = rows[0].row()
         start = self._feature_table.item(r, 2).data(Qt.ItemDataRole.DisplayRole)
         end = self._feature_table.item(r, 3).data(Qt.ItemDataRole.DisplayRole)
-        self._select_span(int(start), int(end))
-        # Reflect the span in the Select: spinboxes too (single selection path).
-        self._sel_start.setValue(int(start))
-        self._sel_end.setValue(int(end))
+        self._jump_to_span(int(start), int(end))
 
     def _on_frame_changed(self) -> None:
         frame = self._frame_combo.currentData()
@@ -631,6 +694,7 @@ class SequencePanel(QWidget):
         self._feature_highlighter.setAnnotations(seq.annotations if self._feature_check.isChecked() else [])
         self._update_feature_legend()
         self._populate_feature_table()
+        self._minimap.set_features(seq.annotations, seq.length)
 
     def _populate_feature_table(self) -> None:
         """Fill the feature table from the active sequence's annotations."""
