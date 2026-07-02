@@ -19,7 +19,7 @@ from PyQt6.QtGui import (
 
 from Bio.Seq import Seq
 from backend.models.sequence import Sequence, MoleculeType, Annotation
-from backend.formats import read_fasta, read_fastq, read_genbank, VENDORS, export_order
+from backend.formats import read_fasta, read_fastq, read_genbank, read_snapgene, VENDORS, export_order
 from gui.history import UndoStack
 from gui.panels.feature_colors import feature_color_map
 import re
@@ -778,10 +778,11 @@ class SequencePanel(QWidget):
     def _open_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "Open sequence file", "",
-            "All bioinformatics (*.fasta *.fa *.fna *.faa *.fastq *.fq *.gb *.gbk *.embl);;"
+            "All bioinformatics (*.fasta *.fa *.fna *.faa *.fastq *.fq *.gb *.gbk *.embl *.dna);;"
             "FASTA (*.fasta *.fa *.fna *.faa);;"
             "FASTQ (*.fastq *.fq);;"
             "GenBank (*.gb *.gbk);;"
+            "SnapGene (*.dna);;"
             "EMBL (*.embl);;All files (*)"
         )
         if not path:
@@ -790,9 +791,12 @@ class SequencePanel(QWidget):
         try:
             readers = {"fasta": read_fasta, "fa": read_fasta, "fna": read_fasta,
                        "faa": read_fasta, "fastq": read_fastq, "fq": read_fastq,
-                       "gb": read_genbank, "gbk": read_genbank, "embl": read_genbank}
+                       "gb": read_genbank, "gbk": read_genbank, "embl": read_genbank,
+                       "dna": read_snapgene}
             reader = readers.get(ext, read_fasta)
-            with open(path) as f:
+            # SnapGene .dna is binary; the rest are text.
+            mode = "rb" if ext == "dna" else "r"
+            with open(path, mode) as f:
                 seqs = reader(f)
             for seq in seqs:
                 self.add_sequence(seq)
