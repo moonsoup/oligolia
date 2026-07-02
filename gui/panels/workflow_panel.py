@@ -30,23 +30,30 @@ from backend.workflow import (
     StepStatus, StepType, Workflow, WorkflowStep, run_workflow, save_ogo, load_ogo,
 )
 
-# Steps exposed in the GUI. "order"/db_search/codon_optimize/msa are excluded:
-# order/vendor pathways are out of scope for now, and the others aren't wired
-# in the engine yet (they report a clear error).
+# Steps exposed in the GUI. The "order" step and any vendor/live-ordering path
+# are deliberately excluded — that touches real money / external accounts and
+# needs explicit direction first. Everything else the engine supports is here
+# (db_search fetches over the network; the rest run locally).
 _GUI_STEPS = [
+    StepType.DB_SEARCH,
     StepType.CRISPR_DESIGN,
     StepType.OFF_TARGET,
     StepType.PRIMER_DESIGN,
     StepType.RESTRICTION_DIGEST,
+    StepType.CODON_OPTIMIZE,
+    StepType.MSA,
     StepType.EXPORT,
 ]
 
 # Sensible starting params per step so users aren't writing JSON from scratch.
 _DEFAULT_PARAMS = {
+    StepType.DB_SEARCH: {"accession": "", "db": "ncbi"},
     StepType.CRISPR_DESIGN: {"max_guides": 5, "check_off_targets": False},
     StepType.OFF_TARGET: {"min_specificity": 0},
     StepType.PRIMER_DESIGN: {},
     StepType.RESTRICTION_DIGEST: {"enzymes": ["EcoRI", "BamHI"]},
+    StepType.CODON_OPTIMIZE: {"organism": "human"},
+    StepType.MSA: {"sequences": [], "algorithm": "muscle"},
     StepType.EXPORT: {"source": "guides"},
 }
 
@@ -78,6 +85,12 @@ def _result_summary(step: WorkflowStep) -> str:
         return f"{len(r.get('fragments', []))} fragments"
     if step.type == StepType.EXPORT:
         return r.get("filename", "exported")
+    if step.type == StepType.DB_SEARCH:
+        return f"{r.get('id', '?')} ({r.get('length', 0)} bp, {r.get('db', '')})"
+    if step.type == StepType.CODON_OPTIMIZE:
+        return f"{r.get('changes', 0)} codons optimized for {r.get('organism', '')}"
+    if step.type == StepType.MSA:
+        return f"{len(r.get('aligned', []))} sequences aligned"
     return "done"
 
 

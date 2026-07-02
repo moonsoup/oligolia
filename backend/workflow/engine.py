@@ -5,9 +5,11 @@ dict, and writes its outputs back into the context so the next step can consume
 them (output of step N feeds step N+1). Handlers reuse the existing operation
 functions; results are stored JSON-native so a run round-trips through ``.ogo``.
 
-Handlers are registered per :class:`StepType`. The offline computational steps
-are wired here; ``db_search``, ``codon_optimize`` and ``msa`` are intentionally
-left unregistered in this backend slice and report a clear, non-fatal error.
+Handlers are registered per :class:`StepType`. All step types are wired:
+computational steps (crispr/off-target/primer/digest/export), ``codon_optimize``
+and ``msa`` run locally; ``db_search`` fetches from NCBI/Ensembl over the
+network. ``order`` reuses the offline vendor file export (no order is
+submitted). An unregistered step type would report a clear, non-fatal error.
 """
 
 from __future__ import annotations
@@ -175,6 +177,59 @@ def _h_order(step: WorkflowStep, ctx: dict) -> dict:
     return result
 
 
+def _h_db_search(step: WorkflowStep, ctx: dict) -> dict:
+    accession = step.params.get("accession") or step.params.get("id")
+    if not accession:
+        raise ValueError("db_search needs params.accession (an NCBI/Ensembl id).")
+    db = step.params.get("db", "ncbi").lower()
+    if db == "ncbi":
+        from ..formats import read_genbank
+        from ..services.ncbi import NCBIClient
+
+        text = NCBIClient(email=step.params.get("email", "")).fetch_nucleotide(accession)
+        seqs = read_genbank(text)
+        if not seqs:
+            raise ValueError(f"No sequence returned for accession {accession!r}.")
+        s = seqs[0]
+        ctx["sequence"] = s.seq
+        return {"id": s.id, "length": s.length, "db": "ncbi",
+                "annotations": len(s.annotations)}
+    if db == "ensembl":
+        from ..services.ensembl import EnsemblClient
+
+        data = EnsemblClient().sequence_id(accession, seq_type=step.params.get("seq_type", "cdna"))
+        seq = data.get("seq", "")
+        if not seq:
+            raise ValueError(f"No sequence returned for Ensembl id {accession!r}.")
+        ctx["sequence"] = seq
+        return {"id": accession, "length": len(seq), "db": "ensembl"}
+    raise ValueError(f"Unknown db {db!r} (use 'ncbi' or 'ensembl').")
+
+
+def _h_codon_optimize(step: WorkflowStep, ctx: dict) -> dict:
+    from ..routers.analysis import optimize_codons
+
+    seq = _require_sequence(step, ctx)
+    res = optimize_codons(dna_sequence=seq, organism=step.params.get("organism", "human"))
+    ctx["sequence"] = res.optimized  # feed the optimized sequence downstream
+    return res.model_dump()
+
+
+def _h_msa(step: WorkflowStep, ctx: dict) -> dict:
+    from ..routers.alignment import MSARequest, multiple_align
+
+    sequences = step.params.get("sequences", [])
+    if len(sequences) < 2:
+        raise ValueError("msa needs params.sequences — a list of >= 2 {id, seq} objects.")
+    res = multiple_align(MSARequest(
+        sequences=sequences, algorithm=step.params.get("algorithm", "muscle")))
+    ctx["msa"] = res.model_dump()
+    return {"aligned": res.aligned, "consensus": res.consensus}
+
+
+register_handler(StepType.DB_SEARCH, _h_db_search)
+register_handler(StepType.CODON_OPTIMIZE, _h_codon_optimize)
+register_handler(StepType.MSA, _h_msa)
 register_handler(StepType.CRISPR_DESIGN, _h_crispr_design)
 register_handler(StepType.OFF_TARGET, _h_off_target)
 register_handler(StepType.PRIMER_DESIGN, _h_primer_design)

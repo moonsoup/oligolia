@@ -104,13 +104,71 @@ def test_missing_sequence_reports_clear_error() -> None:
     assert "No sequence available" in step.error
 
 
-def test_unsupported_step_type_is_non_fatal(tp53_exon7: str) -> None:
-    """db_search isn't wired in this slice; it fails clearly rather than crashing."""
-    wf = _wf(WorkflowStep(id="s1", type=StepType.DB_SEARCH, params={"query": "TP53"}))
+def test_bad_params_fail_clearly_not_crash(tp53_exon7: str) -> None:
+    """A registered handler with bad params fails with its message, not a crash."""
+    wf = _wf(WorkflowStep(id="s1", type=StepType.DB_SEARCH, params={}))  # no accession
     run_workflow(wf)
     step = wf.step("s1")
     assert step.status == StepStatus.FAILED
-    assert "not supported" in step.error
+    assert "accession" in step.error
+
+
+def test_codon_optimize_step(tp53_exon7: str) -> None:
+    """codon_optimize runs locally and feeds the optimized sequence downstream."""
+    coding = "ATGGCCTGTGGG"  # M A C G, no stops
+    wf = _wf(WorkflowStep(id="s1", type=StepType.CODON_OPTIMIZE,
+                          params={"sequence": coding, "organism": "ecoli"}))
+    ctx = run_workflow(wf)
+    step = wf.step("s1")
+    assert step.status == StepStatus.COMPLETE
+    assert step.result["organism"] == "ecoli"
+    assert len(ctx["sequence"]) == len(coding)  # optimized seq is now the context sequence
+
+
+def test_msa_step_local_fallback() -> None:
+    """msa runs via MUSCLE or the built-in fallback on a small sequence set."""
+    seqs = [{"id": "a", "seq": "ACGTACGTAC"}, {"id": "b", "seq": "ACGTTCGTAC"},
+            {"id": "c", "seq": "ACGTACGTTC"}]
+    wf = _wf(WorkflowStep(id="s1", type=StepType.MSA, params={"sequences": seqs}))
+    run_workflow(wf)
+    step = wf.step("s1")
+    assert step.status == StepStatus.COMPLETE
+    assert len(step.result["aligned"]) == 3
+
+
+def test_db_search_step_mocked(monkeypatch) -> None:
+    """db_search fetches a sequence and seeds it into the context (network mocked)."""
+    from backend.services import ncbi
+    gb = (
+        "LOCUS       TESTACC                 12 bp    DNA     linear   SYN 01-JAN-2024\n"
+        "FEATURES             Location/Qualifiers\n"
+        "     gene            1..12\n"
+        "                     /gene=\"demo\"\n"
+        "ORIGIN\n        1 atggcctgtggg\n//\n"
+    )
+    monkeypatch.setattr(ncbi.NCBIClient, "fetch_nucleotide", lambda self, acc: gb)
+    wf = _wf(WorkflowStep(id="s1", type=StepType.DB_SEARCH,
+                          params={"accession": "TESTACC", "db": "ncbi"}))
+    ctx = run_workflow(wf)
+    assert wf.step("s1").status == StepStatus.COMPLETE
+    assert ctx["sequence"].upper() == "ATGGCCTGTGGG"
+
+
+def test_db_search_then_crispr_pipeline(monkeypatch, tp53_exon7: str) -> None:
+    """A mocked db_search feeds CRISPR design downstream via shared context."""
+    from backend.services import ncbi
+    gb = (
+        f"LOCUS       TP53TEST              {len(tp53_exon7)} bp    DNA     linear   SYN 01-JAN-2024\n"
+        "ORIGIN\n" + "".join(f"        1 {tp53_exon7.lower()}\n") + "//\n"
+    )
+    monkeypatch.setattr(ncbi.NCBIClient, "fetch_nucleotide", lambda self, acc: gb)
+    wf = _wf(
+        WorkflowStep(id="s1", type=StepType.DB_SEARCH, params={"accession": "TP53TEST"}),
+        WorkflowStep(id="s2", type=StepType.CRISPR_DESIGN, params={"max_guides": 3}),
+    )
+    run_workflow(wf)
+    assert wf.step("s1").status == StepStatus.COMPLETE
+    assert wf.step("s2").status == StepStatus.COMPLETE
 
 
 def test_ogo_roundtrip(tmp_path, tp53_exon7: str) -> None:
