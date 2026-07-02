@@ -21,7 +21,7 @@ from PyQt6.QtGui import (
 
 from Bio.Seq import Seq
 from backend.models.sequence import Sequence, MoleculeType, Annotation
-from backend.formats import read_fasta, read_fastq, read_genbank, read_snapgene, VENDORS, export_order
+from backend.formats import read_fasta, read_fastq, read_genbank, read_snapgene, VENDORS
 from gui.history import UndoStack
 from gui.panels.feature_colors import feature_color_map
 from gui.panels.plasmid_map import PlasmidMapWidget
@@ -1009,36 +1009,17 @@ class SequencePanel(QWidget):
         return TermsDialog(self).exec() == QDialog.DialogCode.Accepted
 
     def _export_synthesis(self) -> None:
-        if not self._active:
-            QMessageBox.warning(self, "No sequence", "Select a sequence first.")
-            return
-        if not self._ensure_terms_accepted():
-            return  # user declined the terms; nothing is exported
-        vendor = self._vendor_combo.currentData()
-        start, end = self._sel_start.value(), self._sel_end.value()
-        if start == end == 0:
-            start, end = 0, self._active.length
-        elif start > end:
-            start, end = end, start
-
-        try:
-            data, filename, instructions = export_order(self._active, vendor, start, end)
-        except Exception as e:
-            QMessageBox.critical(self, "Export failed", str(e))
-            return
-
-        path, _ = QFileDialog.getSaveFileName(self, "Export for Synthesis", filename)
-        if not path:
-            return
-        with open(path, "wb") as f:
-            f.write(data)
-
-        steps = "\n".join(f"{i + 1}. {step}" for i, step in enumerate(instructions))
+        # Blocked pending human + attorney review of TERMS.md — #28 shipped a
+        # draft terms document that was never reviewed; nothing ships live
+        # here until that review completes (see TERMS.md and #29). The real
+        # export logic this replaced is in git history on this commit's
+        # parent; restore it once terms are actually approved rather than
+        # re-deriving it from scratch.
         QMessageBox.information(
-            self, "Export complete",
-            f"Saved {os.path.basename(path)}.\n\n"
-            f"This file is not submitted anywhere — it's the upload format the vendor's "
-            f"own ordering portal expects. Next steps:\n\n{steps}"
+            self, "Export for Synthesis — temporarily unavailable",
+            "This feature is temporarily disabled while its Terms of Use "
+            "undergo human and legal review (see TERMS.md and issue #29). "
+            "It will be re-enabled once that review is complete."
         )
 
     def _save_result_fasta(self) -> None:
