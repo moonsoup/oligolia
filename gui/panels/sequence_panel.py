@@ -22,6 +22,7 @@ from backend.models.sequence import Sequence, MoleculeType, Annotation
 from backend.formats import read_fasta, read_fastq, read_genbank, read_snapgene, VENDORS, export_order
 from gui.history import UndoStack
 from gui.panels.feature_colors import feature_color_map
+from gui.panels.plasmid_map import PlasmidMapWidget
 import re
 
 # Edit operations that mutate the active sequence in place (and are undoable).
@@ -396,6 +397,15 @@ class SequencePanel(QWidget):
         self._feature_check.toggled.connect(self._on_features_toggled)
         options_bar.addWidget(self._feature_check)
 
+        # Plasmid-map option: unique cutters only (shown only for circular seqs).
+        self._unique_cutters_check = QCheckBox("Unique cutters")
+        self._unique_cutters_check.setChecked(True)
+        self._unique_cutters_check.setToolTip("Plasmid map: show only single-cutter enzymes")
+        self._unique_cutters_check.toggled.connect(
+            lambda c: self._plasmid_map.set_unique_cutters_only(c))
+        self._unique_cutters_check.hide()
+        options_bar.addWidget(self._unique_cutters_check)
+
         self._feature_legend = QLabel("")
         self._feature_legend.setTextFormat(Qt.TextFormat.RichText)
         options_bar.addWidget(self._feature_legend)
@@ -415,11 +425,22 @@ class SequencePanel(QWidget):
         # Vertical feature minimap beside the sequence view (issue #33).
         self._minimap = FeatureMinimap()
         self._minimap.feature_clicked.connect(self._jump_to_span)
-        seq_row = QHBoxLayout()
-        seq_row.setContentsMargins(0, 0, 0, 0)
-        seq_row.addWidget(self._minimap)
-        seq_row.addWidget(self._seq_display)
-        right_layout.addLayout(seq_row)
+        linear_view = QWidget()
+        lv_layout = QHBoxLayout(linear_view)
+        lv_layout.setContentsMargins(0, 0, 0, 0)
+        lv_layout.addWidget(self._minimap)
+        lv_layout.addWidget(self._seq_display)
+
+        # Circular sequences get a plasmid map alongside the linear view
+        # (dual-viewer pattern); linear sequences hide it entirely (#27).
+        self._plasmid_map = PlasmidMapWidget()
+        self._plasmid_map.hide()
+
+        viewer_splitter = QSplitter(Qt.Orientation.Horizontal)
+        viewer_splitter.addWidget(linear_view)
+        viewer_splitter.addWidget(self._plasmid_map)
+        viewer_splitter.setSizes([520, 360])
+        right_layout.addWidget(viewer_splitter)
 
         # Feature table (issue #31) — browse the selected sequence's annotations.
         feat_grp = QGroupBox("Features")
@@ -695,6 +716,14 @@ class SequencePanel(QWidget):
         self._update_feature_legend()
         self._populate_feature_table()
         self._minimap.set_features(seq.annotations, seq.length)
+
+        # Plasmid map: shown alongside the linear view for circular DNA only.
+        show_map = seq.is_circular and not is_protein
+        if show_map:
+            self._plasmid_map.set_unique_cutters_only(self._unique_cutters_check.isChecked())
+            self._plasmid_map.set_sequence(seq)
+        self._plasmid_map.setVisible(show_map)
+        self._unique_cutters_check.setVisible(show_map)
 
     def _populate_feature_table(self) -> None:
         """Fill the feature table from the active sequence's annotations."""
