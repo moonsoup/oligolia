@@ -63,3 +63,11 @@ def test_short_parts_below_min_length_are_skipped() -> None:
 def test_clean_random_sequence_yields_no_hits() -> None:
     # Filler alone contains no library parts.
     assert auto_annotate(FILLER * 3) == []
+
+
+def test_auto_annotate_finds_ampr_and_ori_in_puc19() -> None:
+    """Acceptance (#43): scanning real pUC19 identifies AmpR and its ColE1 ori."""
+    from ._puc19 import PUC19
+    labels = {a.qualifiers["label"] for a in auto_annotate(PUC19)}
+    assert "AmpR (bla)" in labels
+    assert "ColE1 ori" in labels
