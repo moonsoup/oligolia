@@ -152,7 +152,7 @@ class MainWindow(QMainWindow):
         # Pre-fill other panels with the active sequence
         if seq.molecule_type.value in ("DNA", "RNA"):
             self._crispr_panel.set_target(seq.seq)
-            self._primers_panel.set_template(seq.seq)
+            self._primers_panel.set_template(seq.seq, seq.is_circular)
 
     # ── Menu actions ──────────────────────────────────────────────────────────
 

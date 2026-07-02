@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton,
     QLabel, QSpinBox, QDoubleSpinBox, QGroupBox, QTableWidget,
     QTableWidgetItem, QProgressBar, QTabWidget, QMessageBox, QHeaderView,
-    QComboBox, QInputDialog,
+    QComboBox, QInputDialog, QCheckBox,
 )
 from PyQt6.QtGui import QColor
 
@@ -48,6 +48,14 @@ class PrimersPanel(QWidget):
         self._template.setPlaceholderText("Paste or load template DNA sequence…")
         self._template.setMaximumHeight(70)
         tmpl_layout.addWidget(self._template)
+        # Topology toggle — circular molecules need origin-spanning site search
+        # (restriction sites / digest). Set automatically from a loaded
+        # sequence, and user-adjustable for a pasted template.
+        self._circular_check = QCheckBox("Circular topology")
+        self._circular_check.setToolTip(
+            "Search across the origin junction for restriction sites and digest "
+            "(for plasmids and other circular molecules).")
+        tmpl_layout.addWidget(self._circular_check)
         layout.addWidget(tmpl_grp)
 
         tabs = QTabWidget()
@@ -217,8 +225,9 @@ class PrimersPanel(QWidget):
 
         layout.addWidget(tabs)
 
-    def set_template(self, seq: str) -> None:
+    def set_template(self, seq: str, is_circular: bool = False) -> None:
         self._template.setPlainText(seq)
+        self._circular_check.setChecked(is_circular)
 
     # ── Presets ───────────────────────────────────────────────────────────────
 
@@ -345,7 +354,9 @@ class PrimersPanel(QWidget):
         enzymes = [e.strip() for e in enzyme_text.replace("+", ",").split(",") if e.strip()]
         from backend.routers.primers import digest, DigestRequest
         try:
-            result = digest(DigestRequest(template=template, enzymes=enzymes))
+            result = digest(DigestRequest(
+                template=template, enzymes=enzymes,
+                is_circular=self._circular_check.isChecked()))
             self._last_digest = result  # available to the Assembly tab
             n = len(result.fragments)
             cuts = len(result.cut_positions)
@@ -368,7 +379,7 @@ class PrimersPanel(QWidget):
         template = self._template.toPlainText().strip().upper().replace(" ", "").replace("\n", "")
         if not template:
             return
-        req = RestrictionRequest(template=template)
+        req = RestrictionRequest(template=template, is_circular=self._circular_check.isChecked())
         try:
             sites = restriction_sites(req)
             self._re_status.setText(f"{len(sites)} enzyme{'s' if len(sites) != 1 else ''} cut.")
