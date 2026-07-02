@@ -187,3 +187,62 @@ def test_gibson_still_accepts_bare_strings(client: TestClient) -> None:
     r = client.post("/cloning/gibson", json={"fragments": frags, "min_overlap": 15})
     assert r.status_code == 200
     assert r.json()["product"]["annotations"] == []
+
+
+# ── Golden Gate assembly (issue #37) ──────────────────────────────────────────
+
+def _bsai_part(left_oh: str, body: str, right_oh: str) -> str:
+    """A Golden Gate part: two inward BsaI sites releasing left_oh+body+right_oh."""
+    return "TTGGTCTCA" + left_oh + body + right_oh + "AGAGACCTT"
+
+
+def test_golden_gate_assembles_multi_fragment(client: TestClient) -> None:
+    p1 = _bsai_part("TCAG", "AAAAAAAA", "AATG")
+    p2 = _bsai_part("AATG", "GGGGGGGG", "TCAG")
+    r = client.post("/cloning/goldengate", json={"parts": [p1, p2], "enzyme": "BsaI"})
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["product"]["is_circular"] is True
+    assert data["product"]["seq"] == "TCAGAAAAAAAA" + "AATGGGGGGGGG"
+    assert len(data["junctions"]) == 2
+    assert {j["overhang"] for j in data["junctions"]} == {"AATG", "TCAG"}
+    assert data["warnings"] == []  # unique, non-palindromic overhangs
+
+
+def test_golden_gate_palindromic_overhang_flagged(client: TestClient) -> None:
+    p1 = _bsai_part("TCAG", "AAAAAAAA", "AATT")   # AATT is palindromic
+    p2 = _bsai_part("AATT", "GGGGGGGG", "TCAG")
+    r = client.post("/cloning/goldengate", json={"parts": [p1, p2], "enzyme": "BsaI"})
+    assert r.status_code == 200, r.text
+    assert any("Palindromic" in w and "AATT" in w for w in r.json()["warnings"])
+
+
+def test_golden_gate_colliding_overhangs_flagged(client: TestClient) -> None:
+    p1 = _bsai_part("AATG", "AAAAAAAA", "AATG")   # both junctions AATG -> collision
+    p2 = _bsai_part("AATG", "GGGGGGGG", "AATG")
+    r = client.post("/cloning/goldengate", json={"parts": [p1, p2], "enzyme": "BsaI"})
+    assert r.status_code == 200, r.text
+    assert any("Colliding" in w for w in r.json()["warnings"])
+
+
+def test_golden_gate_incompatible_order_rejected(client: TestClient) -> None:
+    p1 = _bsai_part("TCAG", "AAAAAAAA", "AATG")
+    p2 = _bsai_part("CCCC", "GGGGGGGG", "TCAG")   # left CCCC != p1 right AATG
+    r = client.post("/cloning/goldengate", json={"parts": [p1, p2], "enzyme": "BsaI"})
+    assert r.status_code == 400
+    assert "Incompatible ends" in r.json()["detail"]
+
+
+def test_golden_gate_unsupported_enzyme(client: TestClient) -> None:
+    p = _bsai_part("TCAG", "AAAAAAAA", "AATG")
+    r = client.post("/cloning/goldengate", json={"parts": [p, p], "enzyme": "EcoRI"})
+    assert r.status_code == 400
+    assert "Type IIS" in r.json()["detail"]
+
+
+def test_golden_gate_part_without_two_sites_rejected(client: TestClient) -> None:
+    bad = "AAAAAAAAAAAAAAAAAAAA"  # no BsaI site -> releases no insert
+    good = _bsai_part("TCAG", "AAAAAAAA", "AATG")
+    r = client.post("/cloning/goldengate", json={"parts": [bad, good], "enzyme": "BsaI"})
+    assert r.status_code == 400
+    assert "released" in r.json()["detail"]

@@ -10,10 +10,13 @@ verify the junctions actually anneal before joining.
 
 from __future__ import annotations
 
+from Bio import Restriction
+from Bio.Seq import Seq
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from ..models.sequence import Annotation, MoleculeType, Sequence
+from .primers import _overhang_at
 
 router = APIRouter(prefix="/cloning", tags=["cloning"])
 
@@ -115,22 +118,27 @@ def _ends_compatible(
     if up_type == "blunt" and down_type == "blunt":
         return True, "blunt", ""
     if up_type in ("5'", "3'") and up_type == down_type:
-        # The two single-stranded overhangs anneal iff they are reverse
-        # complements. For this panel's palindromic-site enzymes the stored
-        # top-strand bases are self-complementary, so this reduces to equality.
-        if up_seq and up_seq == _reverse_complement(down_seq):
+        # Overhangs are stored as top-strand stagger bases, so a compatible
+        # junction is one where both ends carry the same 4 bp — i.e. the same
+        # sequence reads across the junction on the top strand. This also
+        # correctly matches isoschizomer-compatible ends (e.g. BamHI/BglII,
+        # both GATC) and Golden Gate's designed non-palindromic overhangs.
+        if up_seq and up_seq == down_seq:
             return True, f"sticky-{up_type}", up_seq
     return False, "", ""
 
 
-@router.post("/ligate", response_model=LigationResult)
-def ligate(req: LigationRequest) -> LigationResult:
-    """Ligate fragments in the given order, checking every junction."""
-    frags = req.fragments
+def _ligate_fragments(
+    frags: list[LigationFragment], circular: bool, product_name: str
+) -> LigationResult:
+    """Core assembly: check junctions in order, concatenate, reindex annotations.
 
+    Shared by restriction-ligation (/ligate) and Golden Gate (/goldengate).
+    Raises 400 on the first incompatible junction.
+    """
     # Adjacent junctions, plus the closing junction (last -> first) if circular.
     pairs = [(i, i + 1) for i in range(len(frags) - 1)]
-    if req.circular:
+    if circular:
         pairs.append((len(frags) - 1, 0))
 
     junctions: list[Junction] = []
@@ -166,16 +174,19 @@ def ligate(req: LigationRequest) -> LigationResult:
             f.annotations, 0, len(f.sequence), offset, label, warnings)
         offset += len(f.sequence)
 
-    product_seq = "".join(f.sequence for f in frags)
     product = Sequence(
-        id=req.product_name,
-        name=req.product_name,
-        seq=product_seq,
-        molecule_type=MoleculeType.DNA,
-        is_circular=req.circular,
+        id=product_name, name=product_name,
+        seq="".join(f.sequence for f in frags),
+        molecule_type=MoleculeType.DNA, is_circular=circular,
         annotations=annotations,
     )
     return LigationResult(product=product, junctions=junctions, warnings=warnings)
+
+
+@router.post("/ligate", response_model=LigationResult)
+def ligate(req: LigationRequest) -> LigationResult:
+    """Ligate fragments in the given order, checking every junction."""
+    return _ligate_fragments(req.fragments, req.circular, req.product_name)
 
 
 # ── Gibson assembly (issue #36) ───────────────────────────────────────────────
@@ -320,3 +331,98 @@ def gibson(req: GibsonRequest) -> GibsonResult:
         annotations=annotations,
     )
     return GibsonResult(product=seq, order=order, junctions=junctions, warnings=warnings)
+
+
+# ── Golden Gate assembly (issue #37) ──────────────────────────────────────────
+
+# Type IIS enzymes cut outside their recognition site, leaving a user-defined
+# 4 bp overhang — the basis of scarless, ordered Golden Gate assembly. Cut
+# geometry comes from Bio.Restriction (verified to model the remote cut).
+_TYPE_IIS = {
+    name: getattr(Restriction, name)
+    for name in ("BsaI", "BsmBI", "Esp3I", "BbsI")
+    if hasattr(Restriction, name)
+}
+
+
+class GoldenGateRequest(BaseModel):
+    # Parts in junction order; each carries two inward-facing Type IIS sites.
+    parts: list[str] = Field(min_length=2)
+    enzyme: str = "BsaI"
+    product_name: str = "goldengate_product"
+
+
+def _digest_linear_fragments(seq: str, enz) -> list[dict]:
+    """Linear digest of ``seq`` with a Bio.Restriction enzyme, with overhangs.
+
+    Mirrors the digest geometry in routers/primers so the released Golden Gate
+    insert carries the same overhang representation the ligation core expects.
+    """
+    cuts: dict[int, tuple[str, str]] = {}
+    for pos in enz.search(Seq(seq), linear=True):
+        c = pos - 1
+        cuts[c] = _overhang_at(seq, c, enz.ovhg, False)
+    boundaries = [0, *sorted(cuts), len(seq)]
+    frags = []
+    for i in range(len(boundaries) - 1):
+        s, e = boundaries[i], boundaries[i + 1]
+        if e <= s:
+            continue
+        lo, lt = cuts.get(s, ("", "none"))
+        ro, rt = cuts.get(e, ("", "none"))
+        frags.append({
+            "sequence": seq[s:e],
+            "left_overhang": lo, "left_overhang_type": lt,
+            "right_overhang": ro, "right_overhang_type": rt,
+        })
+    return frags
+
+
+@router.post("/goldengate", response_model=LigationResult)
+def golden_gate(req: GoldenGateRequest) -> LigationResult:
+    """Simulate Golden Gate: Type IIS-release each part's insert, then ligate.
+
+    Each part is digested with the chosen Type IIS enzyme; the single fragment
+    cut on both ends (recognition sites removed) is the released insert. Inserts
+    are ligated in the given part order into a circular product via the shared
+    overhang-checked assembly. Junction overhangs are validated to be unique and
+    non-palindromic (standard Golden Gate constraints) and flagged otherwise.
+    """
+    enz = _TYPE_IIS.get(req.enzyme)
+    if enz is None:
+        raise HTTPException(
+            400, f"'{req.enzyme}' is not a supported Type IIS enzyme "
+            f"(choose from {sorted(_TYPE_IIS)}).")
+
+    inserts: list[LigationFragment] = []
+    for i, raw in enumerate(req.parts):
+        part = raw.upper().replace(" ", "").replace("\n", "")
+        frags = _digest_linear_fragments(part, enz)
+        internal = [f for f in frags
+                    if f["left_overhang_type"] != "none" and f["right_overhang_type"] != "none"]
+        if len(internal) != 1:
+            raise HTTPException(
+                400,
+                f"Part {i + 1} released {len(internal)} inserts (expected exactly 1). "
+                f"A Golden Gate part needs two inward-facing {req.enzyme} sites.",
+            )
+        ins = internal[0]
+        inserts.append(LigationFragment(name=f"insert {i + 1}", **ins))
+
+    # Golden Gate design constraints: junction overhangs unique + non-palindromic.
+    warnings: list[str] = []
+    junction_overhangs = [ins.right_overhang for ins in inserts]
+    dupes = sorted({o for o in junction_overhangs if junction_overhangs.count(o) > 1})
+    if dupes:
+        warnings.append(
+            f"Colliding junction overhangs {dupes}: Golden Gate junctions must be "
+            "unique or fragments can assemble in the wrong order.")
+    for o in junction_overhangs:
+        if o and o == _reverse_complement(o):
+            warnings.append(
+                f"Palindromic junction overhang '{o}': can ligate in either "
+                "orientation, making assembly ambiguous.")
+
+    result = _ligate_fragments(inserts, circular=True, product_name=req.product_name)
+    result.warnings = warnings + result.warnings
+    return result
