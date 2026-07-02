@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Integrate Your Workflow — Oligolia</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<!-- ── Nav ──────────────────────────────────────────────────────────────── -->
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">🧬 Oligolia</a>
+    <ul>
+      <li><a href="index.html#features">Features</a></li>
+      <li><a href="index.html#download">Download</a></li>
+      <li><a href="https://github.com/moonsoup/oligolia/issues/new?template=feature_request.yml" target="_blank">Request Feature</a></li>
+      <li><a href="https://github.com/moonsoup/oligolia/issues/new?template=bug_report.yml" target="_blank">Report Bug</a></li>
+      <li><a href="integrate.html" class="active">For Companies</a></li>
+      <li><a href="index.html#donate" class="btn-donate">❤ Donate</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ── Form ─────────────────────────────────────────────────────────────── -->
+<section class="integrate-form-section">
+  <div class="section-inner narrow">
+    <h1>Integrate Your Workflow</h1>
+    <p class="section-sub">
+      Running a lab or company that wants Oligolia's Workflow builder wired
+      into your own LIMS, pipeline, or ordering system? Tell us what you
+      need below.
+    </p>
+    <p class="integrate-review-note">
+      <strong>Every submission is reviewed by a maintainer before anything
+      is built or changed.</strong> Filing this does not automatically
+      adapt the app — we may follow up with questions, and some requests
+      may not be a fit for a free, offline, single-user desktop tool.
+    </p>
+
+    <form id="integrate-form" novalidate>
+      <!-- Honeypot — real users never fill this in; bots often do. -->
+      <div class="hp-field" aria-hidden="true">
+        <label for="website">Leave this field empty</label>
+        <input type="text" id="website" name="website" tabindex="-1" autocomplete="off" />
+      </div>
+
+      <label for="title">Title <span class="req">*</span></label>
+      <input type="text" id="title" name="title" placeholder="e.g. LIMS integration for Acme Genomics" required />
+
+      <label for="org">Organization / lab name <span class="req">*</span></label>
+      <p class="field-hint">Who is this for? A contact email or GitHub handle is fine if you'd rather not name the org.</p>
+      <input type="text" id="org" name="org" required />
+
+      <label for="system-type">What are you integrating with? <span class="req">*</span></label>
+      <select id="system-type" name="system-type" required>
+        <option value="" disabled selected>Choose one…</option>
+        <option>LIMS (lab information management system)</option>
+        <option>Internal pipeline / script</option>
+        <option>Synthesis vendor ordering system</option>
+        <option>Electronic lab notebook (ELN)</option>
+        <option>Other (describe below)</option>
+      </select>
+
+      <label>Which existing Workflow steps does this involve?</label>
+      <p class="field-hint">Select all that apply — see the Workflow tab in the app for the current step list.</p>
+      <div class="checkbox-grid" id="steps-needed">
+        <label class="checkbox-item"><input type="checkbox" value="DB Search (NCBI/Ensembl/UniProt/KEGG lookup)"> DB Search (NCBI/Ensembl/UniProt/KEGG lookup)</label>
+        <label class="checkbox-item"><input type="checkbox" value="CRISPR Design"> CRISPR Design</label>
+        <label class="checkbox-item"><input type="checkbox" value="Off-target Check"> Off-target Check</label>
+        <label class="checkbox-item"><input type="checkbox" value="Primer Design"> Primer Design</label>
+        <label class="checkbox-item"><input type="checkbox" value="Codon Optimization"> Codon Optimization</label>
+        <label class="checkbox-item"><input type="checkbox" value="Restriction Digest"> Restriction Digest</label>
+        <label class="checkbox-item"><input type="checkbox" value="MSA (multiple sequence alignment)"> MSA (multiple sequence alignment)</label>
+        <label class="checkbox-item"><input type="checkbox" value="Export (FASTA/TSV/BED)"> Export (FASTA/TSV/BED)</label>
+        <label class="checkbox-item"><input type="checkbox" value="Order (offline vendor-format file generation — see #10)"> Order (offline vendor-format file generation — see #10)</label>
+        <label class="checkbox-item"><input type="checkbox" value="None of these — I need a new step type (describe below)"> None of these — I need a new step type (describe below)</label>
+      </div>
+
+      <label for="input-shape">What input format do you need Oligolia to accept? <span class="req">*</span></label>
+      <p class="field-hint">Field names/types, file format (CSV/JSON/FASTA/etc.), and — ideally — a real example row or file.</p>
+      <textarea id="input-shape" name="input-shape" rows="4" placeholder="e.g. a CSV with columns: sample_id, sequence, target_gene, priority" required></textarea>
+
+      <label for="output-shape">What output format do you need Oligolia to produce? <span class="req">*</span></label>
+      <p class="field-hint">Field names/types, file format, and — ideally — a real example row or file your downstream system expects.</p>
+      <textarea id="output-shape" name="output-shape" rows="4" required></textarea>
+
+      <label for="example-workflow">Example end-to-end workflow <span class="opt">(optional but very helpful)</span></label>
+      <p class="field-hint">Walk through one real run the way you'd actually use it.</p>
+      <textarea id="example-workflow" name="example-workflow" rows="5" placeholder="1. Search NCBI for &quot;BRCA1&quot; → load sequence
+2. Design CRISPR guides (SpCas9) → filter to top 4
+3. Export guides in our LIMS's expected TSV shape → columns: ..."></textarea>
+
+      <label for="constraints">Any constraints we should know about? <span class="opt">(optional)</span></label>
+      <p class="field-hint">Data sensitivity, offline-only requirements, volume/throughput, must-not-change fields in your downstream system, etc.</p>
+      <textarea id="constraints" name="constraints" rows="3"></textarea>
+
+      <label for="priority">How important is this to you? <span class="opt">(optional)</span></label>
+      <select id="priority" name="priority">
+        <option value="" selected>—</option>
+        <option>Nice to have</option>
+        <option>Would significantly improve our workflow</option>
+        <option>Blocking — we can't adopt Oligolia without this</option>
+      </select>
+
+      <div class="form-actions">
+        <button type="submit" id="submit-btn" class="btn-primary">Submit Request</button>
+        <span id="submit-status" class="submit-status" role="status" aria-live="polite"></span>
+      </div>
+
+      <div id="success-box" class="success-box" hidden>
+        ✅ <strong>Submitted.</strong> Your request is now
+        <a id="success-link" href="#" target="_blank">issue #<span id="success-num"></span></a>
+        on GitHub — a maintainer will review it and follow up there.
+      </div>
+      <div id="error-box" class="error-box" hidden>
+        Something went wrong submitting this — please try again, or file it
+        directly on
+        <a href="https://github.com/moonsoup/oligolia/issues/new?template=workflow_integration_request.yml" target="_blank">GitHub</a>.
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- ── Footer ────────────────────────────────────────────────────────────── -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo">🧬 Oligolia</div>
+    <div class="footer-links">
+      <a href="https://github.com/moonsoup/oligolia" target="_blank">GitHub</a>
+      <a href="https://github.com/moonsoup/oligolia/releases" target="_blank">Releases</a>
+      <a href="https://github.com/moonsoup/oligolia/issues" target="_blank">Issues</a>
+      <a href="https://github.com/moonsoup/oligolia/blob/main/LICENSE" target="_blank">MIT License</a>
+    </div>
+    <div class="footer-copy">© 2026 Oligolia Project · Built with Biopython, PyQt6, FastAPI</div>
+  </div>
+</footer>
+
+<script src="js/integrate.js"></script>
+</body>
+</html>

@@ -151,6 +151,77 @@ h1 {
 
 /* ── For Companies / Labs ─────────────────────────────────────────────────── */
 .integrations-cta { display: flex; justify-content: center; }
+nav ul li a.active { color: var(--blue); }
+
+/* ── Integration request form ─────────────────────────────────────────────── */
+.integrate-form-section { padding-bottom: 80px; }
+.section-inner.narrow { max-width: 720px; }
+.integrate-form-section h1 {
+  font-size: 2rem; font-weight: 700;
+  text-align: center; margin-bottom: 12px; margin-top: 40px;
+}
+.integrate-review-note {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 20px; margin-bottom: 40px; font-size: .95rem; color: var(--text-dim);
+}
+.integrate-review-note strong { color: var(--text); }
+
+#integrate-form label {
+  display: block; font-weight: 600; margin-top: 28px; margin-bottom: 6px;
+}
+#integrate-form label:first-of-type { margin-top: 0; }
+#integrate-form .req { color: var(--red); }
+#integrate-form .opt { color: var(--text-dim); font-weight: 400; font-size: .85em; }
+.field-hint { color: var(--text-dim); font-size: .88rem; margin-bottom: 8px; }
+
+#integrate-form input[type="text"],
+#integrate-form select,
+#integrate-form textarea {
+  width: 100%; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 14px; color: var(--text);
+  font-family: inherit; font-size: 1rem;
+}
+#integrate-form textarea { resize: vertical; font-family: var(--mono); font-size: .92rem; }
+#integrate-form input[type="text"]:focus,
+#integrate-form select:focus,
+#integrate-form textarea:focus {
+  outline: none; border-color: var(--blue);
+}
+
+.checkbox-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+.checkbox-item {
+  display: flex !important; align-items: flex-start; gap: 8px;
+  font-weight: 400 !important; margin: 0 !important;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; font-size: .9rem; cursor: pointer;
+}
+.checkbox-item input { margin-top: 2px; accent-color: var(--blue); }
+
+/* Honeypot — visually hidden, still in the tab/DOM flow for bots that fill
+   every field programmatically without rendering CSS. */
+.hp-field { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+.form-actions {
+  display: flex; align-items: center; gap: 16px; margin-top: 36px;
+}
+.form-actions .btn-primary { border: none; cursor: pointer; }
+.form-actions .btn-primary:disabled { opacity: .6; cursor: default; }
+.submit-status { color: var(--text-dim); font-size: .9rem; }
+
+.success-box, .error-box {
+  margin-top: 24px; padding: 16px 20px; border-radius: 10px; font-size: .95rem;
+}
+.success-box {
+  background: rgba(74,222,128,.1); border: 1px solid var(--green); color: var(--text);
+}
+.success-box a { color: var(--green); }
+.error-box {
+  background: rgba(248,113,113,.1); border: 1px solid var(--red); color: var(--text);
+}
+.error-box a { color: var(--red); }
 
 /* ── Feature grid ─────────────────────────────────────────────────────────── */
 .features { background: var(--bg2); }
@@ -229,7 +300,7 @@ h1 {
 .tracker-btn:hover { transform: translateY(-2px); text-decoration: none; }
 .tracker-btn.bug  { background: rgba(248,113,113,.15); border: 1px solid #f87171; color: #f87171; }
 .tracker-btn.feat { background: rgba(74,222,128,.1);  border: 1px solid var(--green); color: var(--green); }
-.tracker-btn.integration { background: rgba(96,165,250,.1); border: 1px solid #60a5fa; color: #60a5fa; }
+.tracker-btn.integration { background: rgba(96,165,250,.1); border: 1px solid var(--blue); color: var(--blue); }
 .tracker-btn.view { background: var(--bg2); border: 1px solid var(--border); color: var(--text); }
 
 /* ── Footer ───────────────────────────────────────────────────────────────── */

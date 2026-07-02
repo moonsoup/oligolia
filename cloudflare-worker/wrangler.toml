@@ -1,0 +1,7 @@
+name = "oligolia-issue-proxy"
+main = "issue-proxy.js"
+compatibility_date = "2026-06-01"
+
+# GITHUB_TOKEN is set as a secret, never here:
+#   wrangler secret put GITHUB_TOKEN
+# See README.md for how to generate the token.
