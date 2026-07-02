@@ -171,3 +171,8 @@ not every single one — do a design pass:
 - **Never bump `version.py` or push a tag** from the remote loop — releases are a deliberate, separate step the human takes.
 - **Backend-only issues with passing tests** may close directly; GUI issues need the
   screenshot-verification step above before closing.
+- **Never implement an issue labeled `needs-review`** (e.g. one filed via the "Workflow
+  Integration Request" template) until a maintainer has posted a comment approving the
+  approach — these are third-party/company submissions describing a *desired* integration,
+  not a scoped, pre-approved task. Same posture as the legal-gated issues (#28/#29): triage
+  and ask clarifying questions in a comment if useful, but don't build against it yet.

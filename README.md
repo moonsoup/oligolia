@@ -12,7 +12,7 @@ Align sequences. Annotate variants. All offline, all on your desktop.
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)](#download)
 [![Release](https://img.shields.io/github/v/release/moonsoup/oligolia)](https://github.com/moonsoup/oligolia/releases/latest)
 
-[**Download Free**](#download) · [Report Bug](https://github.com/moonsoup/oligolia/issues/new?template=bug_report.yml) · [Request Feature](https://github.com/moonsoup/oligolia/issues/new?template=feature_request.yml) · [**Donate ❤**](#support-oligolia)
+[**Download Free**](#download) · [Report Bug](https://github.com/moonsoup/oligolia/issues/new?template=bug_report.yml) · [Request Feature](https://github.com/moonsoup/oligolia/issues/new?template=feature_request.yml) · [Integrate Your Workflow](https://github.com/moonsoup/oligolia/issues/new?template=workflow_integration_request.yml) · [**Donate ❤**](#support-oligolia)
 
 </div>
 
@@ -62,12 +62,13 @@ All donations go directly to project development. Thank you!
 
 ---
 
-## Bugs & Feature Requests
+## Bugs, Features & Integrations
 
 Found a bug or have an idea? The tracker is open — all issues are reviewed weekly and prioritized.
 
 - 🐛 [Report a Bug](https://github.com/moonsoup/oligolia/issues/new?template=bug_report.yml)
 - 💡 [Request a Feature](https://github.com/moonsoup/oligolia/issues/new?template=feature_request.yml)
+- 🏢 [Integrate Your Workflow](https://github.com/moonsoup/oligolia/issues/new?template=workflow_integration_request.yml) — running a lab or company that wants Oligolia's Workflow builder to plug into your own LIMS, pipeline, or ordering system? Tell us what input/output shape you need. Every submission is reviewed by a maintainer before anything is built.
 - 📋 [View All Issues](https://github.com/moonsoup/oligolia/issues)
 
 ---

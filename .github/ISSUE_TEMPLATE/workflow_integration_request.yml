@@ -1,0 +1,98 @@
+name: Workflow Integration Request (companies / labs)
+description: Tell us what your organization needs from Oligolia's Workflow builder so it can plug into your own pipeline or system
+labels: ["workflow-integration", "needs-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a company or lab that wants Oligolia's **Workflow builder** to produce
+        input/output shaped for your own downstream system (a LIMS, an internal
+        pipeline, a synthesis-ordering system, etc.) rather than a one-off bug or
+        feature idea.
+
+        **Every submission here is reviewed by a maintainer before anything is
+        built or changed.** Filing this issue starts that review — it does not
+        automatically adapt the app. We may follow up with questions before any
+        implementation work begins, and some requests may not be a fit for a
+        free, offline, single-user desktop tool.
+
+  - type: input
+    id: org
+    attributes:
+      label: Organization / lab name
+      description: Who is this for? (A contact email or GitHub handle is fine if you'd rather not name the org.)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: system-type
+    attributes:
+      label: What are you integrating with?
+      options:
+        - LIMS (lab information management system)
+        - Internal pipeline / script
+        - Synthesis vendor ordering system
+        - Electronic lab notebook (ELN)
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: steps-needed
+    attributes:
+      label: Which existing Workflow steps does this involve?
+      description: Select all that apply — see the Workflow tab for the current step list.
+      options:
+        - label: DB Search (NCBI/Ensembl/UniProt/KEGG lookup)
+        - label: CRISPR Design
+        - label: Off-target Check
+        - label: Primer Design
+        - label: Codon Optimization
+        - label: Restriction Digest
+        - label: MSA (multiple sequence alignment)
+        - label: Export (FASTA/TSV/BED)
+        - label: Order (offline vendor-format file generation — see #10)
+        - label: None of these — I need a new step type (describe below)
+
+  - type: textarea
+    id: input-shape
+    attributes:
+      label: What input format do you need Oligolia to accept?
+      description: Field names/types, file format (CSV/JSON/FASTA/etc.), and — ideally — a real example row or file.
+      placeholder: |
+        e.g. a CSV with columns: sample_id, sequence, target_gene, priority
+    validations:
+      required: true
+
+  - type: textarea
+    id: output-shape
+    attributes:
+      label: What output format do you need Oligolia to produce?
+      description: Field names/types, file format, and — ideally — a real example row or file your downstream system expects.
+    validations:
+      required: true
+
+  - type: textarea
+    id: example-workflow
+    attributes:
+      label: Example end-to-end workflow (optional but very helpful)
+      description: Walk through one real run the way you'd actually use it.
+      placeholder: |
+        1. Search NCBI for "BRCA1" → load sequence
+        2. Design CRISPR guides (SpCas9) → filter to top 4
+        3. Export guides in our LIMS's expected TSV shape → columns: ...
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Any constraints we should know about?
+      description: Data sensitivity, offline-only requirements, volume/throughput, must-not-change fields in your downstream system, etc.
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: How important is this to you?
+      options:
+        - Nice to have
+        - Would significantly improve our workflow
+        - Blocking — we can't adopt Oligolia without this
