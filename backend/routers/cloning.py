@@ -11,9 +11,9 @@ verify the junctions actually anneal before joining.
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from ..models.sequence import MoleculeType, Sequence
+from ..models.sequence import Annotation, MoleculeType, Sequence
 
 router = APIRouter(prefix="/cloning", tags=["cloning"])
 
@@ -22,6 +22,49 @@ _COMPLEMENT = str.maketrans("ACGTacgt", "TGCAtgca")
 
 def _reverse_complement(seq: str) -> str:
     return seq.translate(_COMPLEMENT)[::-1]
+
+
+def _reindex_annotations(
+    annotations: list[Annotation],
+    local_lo: int,
+    local_hi: int,
+    product_offset: int,
+    label: str,
+    warnings: list[str],
+) -> list[Annotation]:
+    """Map a fragment's annotations onto product coordinates.
+
+    Only the fragment's retained window ``[local_lo, local_hi)`` (its bases
+    that actually survive into the product — trimmed overlaps are excluded)
+    is placed, starting at ``product_offset``. Junction-split policy: an
+    annotation extending past the retained window is **truncated** to the
+    retained portion and flagged ``qualifiers["truncated_at_junction"]="true"``;
+    one lying entirely outside the window is **dropped**. Both cases emit a
+    warning so nothing is silently altered.
+    """
+    out: list[Annotation] = []
+    for ann in annotations:
+        clip_s, clip_e = max(ann.start, local_lo), min(ann.end, local_hi)
+        if clip_s >= clip_e:
+            warnings.append(
+                f"{label}: dropped {ann.feature_type} [{ann.start}:{ann.end}] "
+                "(outside retained region / in a trimmed overlap)"
+            )
+            continue
+        new_s = product_offset + (clip_s - local_lo)
+        new_e = product_offset + (clip_e - local_lo)
+        qualifiers = dict(ann.qualifiers)
+        if clip_s != ann.start or clip_e != ann.end:
+            qualifiers["truncated_at_junction"] = "true"
+            warnings.append(
+                f"{label}: truncated {ann.feature_type} [{ann.start}:{ann.end}] "
+                f"to [{new_s}:{new_e}] at an assembly junction"
+            )
+        out.append(Annotation(
+            feature_type=ann.feature_type, start=new_s, end=new_e,
+            strand=ann.strand, qualifiers=qualifiers,
+        ))
+    return out
 
 
 class LigationFragment(BaseModel):
@@ -38,6 +81,9 @@ class LigationFragment(BaseModel):
     left_overhang_type: str = "none"
     right_overhang: str = ""
     right_overhang_type: str = "none"
+    # Source annotations in this fragment's local coordinates; reindexed onto
+    # the product (issue #38).
+    annotations: list[Annotation] = Field(default_factory=list)
 
 
 class LigationRequest(BaseModel):
@@ -56,6 +102,7 @@ class Junction(BaseModel):
 class LigationResult(BaseModel):
     product: Sequence
     junctions: list[Junction]
+    warnings: list[str] = Field(default_factory=list)
 
 
 def _ends_compatible(
@@ -107,6 +154,18 @@ def ligate(req: LigationRequest) -> LigationResult:
             upstream=up_name, downstream=down_name, kind=kind, overhang=overhang,
         ))
 
+    # Reindex source annotations onto product coordinates. Ligation
+    # concatenates full top strands, so each fragment's placed window is its
+    # whole length at the running offset — no overlap trimming, no splits.
+    warnings: list[str] = []
+    annotations: list[Annotation] = []
+    offset = 0
+    for i, f in enumerate(frags):
+        label = f.name or f"fragment {i + 1}"
+        annotations += _reindex_annotations(
+            f.annotations, 0, len(f.sequence), offset, label, warnings)
+        offset += len(f.sequence)
+
     product_seq = "".join(f.sequence for f in frags)
     product = Sequence(
         id=req.product_name,
@@ -114,8 +173,9 @@ def ligate(req: LigationRequest) -> LigationResult:
         seq=product_seq,
         molecule_type=MoleculeType.DNA,
         is_circular=req.circular,
+        annotations=annotations,
     )
-    return LigationResult(product=product, junctions=junctions)
+    return LigationResult(product=product, junctions=junctions, warnings=warnings)
 
 
 # ── Gibson assembly (issue #36) ───────────────────────────────────────────────
@@ -124,10 +184,24 @@ def ligate(req: LigationRequest) -> LigationResult:
 _MAX_GIBSON_FRAGMENTS = 12
 
 
+class GibsonFragment(BaseModel):
+    sequence: str
+    name: str = ""
+    annotations: list[Annotation] = Field(default_factory=list)
+
+
 class GibsonRequest(BaseModel):
-    fragments: list[str] = Field(min_length=2)
+    fragments: list[GibsonFragment] = Field(min_length=2)
     min_overlap: int = Field(default=15, ge=5)
     product_name: str = "gibson_product"
+
+    @field_validator("fragments", mode="before")
+    @classmethod
+    def _coerce_bare_strings(cls, v: object) -> object:
+        # Accept a plain list of sequence strings for convenience/back-compat.
+        if isinstance(v, list):
+            return [{"sequence": x} if isinstance(x, str) else x for x in v]
+        return v
 
 
 class GibsonJunction(BaseModel):
@@ -141,6 +215,7 @@ class GibsonResult(BaseModel):
     product: Sequence
     order: list[int]                 # input indices in assembled circular order
     junctions: list[GibsonJunction]
+    warnings: list[str] = Field(default_factory=list)
 
 
 def _overlap(a: str, b: str, min_overlap: int) -> int:
@@ -160,7 +235,8 @@ def gibson(req: GibsonRequest) -> GibsonResult:
     reported as a clear error rather than guessed. Reverse-complement
     orientation and mismatch-tolerant overlaps are noted follow-ups.
     """
-    frags = [f.upper().replace(" ", "").replace("\n", "") for f in req.fragments]
+    gfrags = req.fragments
+    frags = [g.sequence.upper().replace(" ", "").replace("\n", "") for g in gfrags]
     n = len(frags)
     if n > _MAX_GIBSON_FRAGMENTS:
         raise HTTPException(400, f"Too many fragments for v1 assembly (max {_MAX_GIBSON_FRAGMENTS}).")
@@ -222,8 +298,25 @@ def gibson(req: GibsonRequest) -> GibsonResult:
     if closing:
         product = product[:-closing]
 
+    # Reindex source annotations onto product coordinates. Each fragment's
+    # retained window excludes its leading overlap (already contributed by the
+    # previous fragment) and, for the last fragment, the trailing closing
+    # overlap (duplicated by the first fragment's prefix). See #38 policy.
+    warnings: list[str] = []
+    annotations: list[Annotation] = []
+    running = 0
+    for k in range(n):
+        idx = order[k]
+        local_lo = 0 if k == 0 else ov[order[k - 1]][order[k]]
+        local_hi = len(frags[idx]) - (closing if k == n - 1 else 0)
+        label = gfrags[idx].name or f"fragment {idx + 1}"
+        annotations += _reindex_annotations(
+            gfrags[idx].annotations, local_lo, local_hi, running, label, warnings)
+        running += local_hi - local_lo
+
     seq = Sequence(
         id=req.product_name, name=req.product_name, seq=product,
         molecule_type=MoleculeType.DNA, is_circular=True,
+        annotations=annotations,
     )
-    return GibsonResult(product=seq, order=order, junctions=junctions)
+    return GibsonResult(product=seq, order=order, junctions=junctions, warnings=warnings)

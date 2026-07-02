@@ -137,3 +137,53 @@ def test_gibson_ambiguous_ordering_refused(client: TestClient) -> None:
     r = client.post("/cloning/gibson", json={"fragments": frags, "min_overlap": 15})
     assert r.status_code == 400
     assert "Ambiguous" in r.json()["detail"]
+
+
+# ── Annotation reindexing onto assembled products (issue #38) ─────────────────
+
+def test_ligation_reindexes_annotations(client: TestClient) -> None:
+    """Source annotations shift by each fragment's product offset (hand-checked)."""
+    a = {"sequence": "AAAACCCC", "name": "A",
+         "left_overhang_type": "blunt", "right_overhang_type": "blunt",
+         "annotations": [{"feature_type": "geneA", "start": 0, "end": 4}]}
+    b = {"sequence": "GGGGTTTT", "name": "B",
+         "left_overhang_type": "blunt", "right_overhang_type": "blunt",
+         "annotations": [{"feature_type": "geneB", "start": 2, "end": 6}]}
+    r = client.post("/cloning/ligate", json={"fragments": [a, b], "circular": True})
+    assert r.status_code == 200, r.text
+    anns = {x["feature_type"]: (x["start"], x["end"]) for x in r.json()["product"]["annotations"]}
+    assert anns["geneA"] == (0, 4)     # fragment A at offset 0
+    assert anns["geneB"] == (10, 14)   # fragment B at offset 8 -> 2+8, 6+8
+    assert r.json()["warnings"] == []  # no trimming in ligation
+
+
+def test_gibson_reindexes_truncates_and_drops(client: TestClient) -> None:
+    """Gibson reindex accounts for trimmed overlaps (hand-checked example)."""
+    c = GIBSON_TARGET[:40]
+    f0seq, f1seq = c[0:30], c[20:40] + c[0:10]  # 2-fragment circle, 10 bp overlaps
+    f0 = {"sequence": f0seq, "name": "f0",
+          "annotations": [{"feature_type": "gx", "start": 5, "end": 15}]}
+    f1 = {"sequence": f1seq, "name": "f1", "annotations": [
+        {"feature_type": "drop", "start": 2, "end": 8},    # in trimmed leading overlap
+        {"feature_type": "keep", "start": 12, "end": 18},  # retained
+        {"feature_type": "span", "start": 8, "end": 14},   # crosses the overlap boundary
+    ]}
+    r = client.post("/cloning/gibson", json={"fragments": [f0, f1], "min_overlap": 10})
+    assert r.status_code == 200, r.text
+    # Confirm the designed 10 bp overlaps (guards the hand-checked coordinates).
+    assert all(j["overlap_length"] == 10 for j in r.json()["junctions"])
+    m = {x["feature_type"]: x for x in r.json()["product"]["annotations"]}
+    assert (m["gx"]["start"], m["gx"]["end"]) == (5, 15)     # f0 fully retained
+    assert (m["keep"]["start"], m["keep"]["end"]) == (32, 38)
+    assert (m["span"]["start"], m["span"]["end"]) == (30, 34)
+    assert m["span"]["qualifiers"]["truncated_at_junction"] == "true"
+    assert "drop" not in m  # fully inside a trimmed overlap -> dropped
+    assert any("drop" in w for w in r.json()["warnings"])
+
+
+def test_gibson_still_accepts_bare_strings(client: TestClient) -> None:
+    """Back-compat: a plain list of sequence strings still assembles."""
+    frags = _split_with_overlaps(GIBSON_TARGET, 20)
+    r = client.post("/cloning/gibson", json={"fragments": frags, "min_overlap": 15})
+    assert r.status_code == 200
+    assert r.json()["product"]["annotations"] == []
