@@ -376,6 +376,8 @@ class SequencePanel(QWidget):
         self._feature_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self._feature_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._feature_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._feature_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self._feature_table.itemSelectionChanged.connect(self._on_feature_row_selected)
         self._feature_table.setSortingEnabled(True)
         self._feature_table.setMaximumHeight(160)
         self._feature_table.hide()
@@ -504,17 +506,34 @@ class SequencePanel(QWidget):
                 self._prot_highlighter.setDocument(None)
             self._dna_highlighter.setDocument(display.document())
 
-    def _select_range(self) -> None:
-        if not self._active:
-            return
-        start, end = self._sel_start.value(), self._sel_end.value()
+    def _select_span(self, start: int, end: int) -> None:
+        """Select [start, end) in the sequence view and scroll it into view."""
         if start > end:
             start, end = end, start
         cursor = self._seq_display.textCursor()
         cursor.setPosition(start)
         cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
         self._seq_display.setTextCursor(cursor)
+        self._seq_display.ensureCursorVisible()
+
+    def _select_range(self) -> None:
+        if not self._active:
+            return
+        self._select_span(self._sel_start.value(), self._sel_end.value())
         self._seq_display.setFocus()
+
+    def _on_feature_row_selected(self) -> None:
+        """Clicking a feature row selects/scrolls to its span (issue #32)."""
+        rows = self._feature_table.selectionModel().selectedRows()
+        if not rows or not self._active:
+            return
+        r = rows[0].row()
+        start = self._feature_table.item(r, 2).data(Qt.ItemDataRole.DisplayRole)
+        end = self._feature_table.item(r, 3).data(Qt.ItemDataRole.DisplayRole)
+        self._select_span(int(start), int(end))
+        # Reflect the span in the Select: spinboxes too (single selection path).
+        self._sel_start.setValue(int(start))
+        self._sel_end.setValue(int(end))
 
     def _on_frame_changed(self) -> None:
         frame = self._frame_combo.currentData()
@@ -617,12 +636,14 @@ class SequencePanel(QWidget):
         """Fill the feature table from the active sequence's annotations."""
         anns = self._active.annotations if self._active else []
         tbl = self._feature_table
+        tbl.blockSignals(True)  # avoid spurious selection signals while rebuilding
         tbl.setSortingEnabled(False)
         tbl.setRowCount(0)
         if not anns:
             tbl.hide()
             self._feature_empty.show()
             tbl.setSortingEnabled(True)
+            tbl.blockSignals(False)
             return
         self._feature_empty.hide()
         tbl.show()
@@ -647,6 +668,7 @@ class SequencePanel(QWidget):
                     [type_item, strand_item, start_item, end_item, QTableWidgetItem(summary)]):
                 tbl.setItem(i, col, item)
         tbl.setSortingEnabled(True)
+        tbl.blockSignals(False)
 
     def _on_circular_toggled(self, checked: bool) -> None:
         """Persist the topology change onto the active sequence + list tooltip."""
