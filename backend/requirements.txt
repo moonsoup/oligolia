@@ -20,6 +20,9 @@ requests==2.32.3
 openpyxl==3.1.5
 python-multipart==0.0.20
 
+# Vendor-credential storage (OS keychain, not plaintext settings)
+keyring==25.7.0
+
 # Email / sharing
 yagmail==0.15.293
 secure-smtplib==0.1.1
