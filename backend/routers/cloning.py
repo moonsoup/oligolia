@@ -116,3 +116,114 @@ def ligate(req: LigationRequest) -> LigationResult:
         is_circular=req.circular,
     )
     return LigationResult(product=product, junctions=junctions)
+
+
+# ── Gibson assembly (issue #36) ───────────────────────────────────────────────
+
+# Exhaustive ordering search is factorial; refuse absurd fragment counts.
+_MAX_GIBSON_FRAGMENTS = 12
+
+
+class GibsonRequest(BaseModel):
+    fragments: list[str] = Field(min_length=2)
+    min_overlap: int = Field(default=15, ge=5)
+    product_name: str = "gibson_product"
+
+
+class GibsonJunction(BaseModel):
+    upstream_index: int    # index into the input fragment list
+    downstream_index: int
+    overlap_length: int
+    overlap: str
+
+
+class GibsonResult(BaseModel):
+    product: Sequence
+    order: list[int]                 # input indices in assembled circular order
+    junctions: list[GibsonJunction]
+
+
+def _overlap(a: str, b: str, min_overlap: int) -> int:
+    """Longest L in [min_overlap, min(len)] with suffix(a, L) == prefix(b, L)."""
+    for length in range(min(len(a), len(b)), min_overlap - 1, -1):
+        if a[-length:] == b[:length]:
+            return length
+    return 0
+
+
+@router.post("/gibson", response_model=GibsonResult)
+def gibson(req: GibsonRequest) -> GibsonResult:
+    """Assemble linear fragments with overlapping ends into a circular product.
+
+    v1 matches ends exactly (suffix→prefix) in the given orientation and
+    searches all circular orderings; ambiguity or no valid ordering is
+    reported as a clear error rather than guessed. Reverse-complement
+    orientation and mismatch-tolerant overlaps are noted follow-ups.
+    """
+    frags = [f.upper().replace(" ", "").replace("\n", "") for f in req.fragments]
+    n = len(frags)
+    if n > _MAX_GIBSON_FRAGMENTS:
+        raise HTTPException(400, f"Too many fragments for v1 assembly (max {_MAX_GIBSON_FRAGMENTS}).")
+
+    # ov[i][j] = overlap length of fragment i's suffix into fragment j's prefix.
+    ov = [[_overlap(frags[i], frags[j], req.min_overlap) if i != j else 0
+           for j in range(n)] for i in range(n)]
+
+    # Find every circular ordering (anchored at fragment 0 to factor out
+    # rotation) where consecutive fragments overlap and the circle closes.
+    orders: list[list[int]] = []
+
+    def _dfs(path: list[int], used: set[int]) -> None:
+        if len(path) == n:
+            if ov[path[-1]][path[0]] > 0:
+                orders.append(list(path))
+            return
+        for nxt in range(n):
+            if nxt not in used and ov[path[-1]][nxt] > 0:
+                path.append(nxt)
+                used.add(nxt)
+                _dfs(path, used)
+                used.discard(nxt)
+                path.pop()
+
+    _dfs([0], {0})
+
+    if not orders:
+        raise HTTPException(
+            400,
+            f"No valid circular assembly: fragments do not form a closed loop "
+            f"with overlaps ≥ {req.min_overlap} bp. Check overlap design/orientation.",
+        )
+    if len(orders) > 1:
+        raise HTTPException(
+            400,
+            f"Ambiguous assembly: {len(orders)} distinct circular orderings satisfy "
+            "the overlaps. Refusing to guess — make overlap junctions unique.",
+        )
+
+    order = orders[0]
+    junctions: list[GibsonJunction] = []
+    product = frags[order[0]]
+    for k in range(1, n):
+        length = ov[order[k - 1]][order[k]]
+        junctions.append(GibsonJunction(
+            upstream_index=order[k - 1], downstream_index=order[k],
+            overlap_length=length, overlap=frags[order[k]][:length],
+        ))
+    # Rebuild trimming leading overlaps; then trim the closing overlap once so
+    # the shared region isn't duplicated at both ends of the linear form.
+    for k in range(1, n):
+        product += frags[order[k]][ov[order[k - 1]][order[k]]:]
+    closing = ov[order[-1]][order[0]]
+    junctions.append(GibsonJunction(
+        upstream_index=order[-1], downstream_index=order[0],
+        overlap_length=closing, overlap=frags[order[0]][:closing],
+    ))
+    if closing:
+        product = product[:-closing]
+
+    seq = Sequence(
+        id=req.product_name, name=req.product_name, seq=product,
+        molecule_type=MoleculeType.DNA, is_circular=True,
+    )
+    return GibsonResult(product=seq, order=order, junctions=junctions)

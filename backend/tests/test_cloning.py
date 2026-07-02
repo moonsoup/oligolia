@@ -87,3 +87,53 @@ def test_free_linear_ends_cannot_ligate(client: TestClient) -> None:
          "left_overhang_type": "none", "right_overhang_type": "none"}
     r = client.post("/cloning/ligate", json={"fragments": [a, b], "circular": True})
     assert r.status_code == 400
+
+
+# ── Gibson assembly (issue #36) ───────────────────────────────────────────────
+# Varied 90 bp target so 20 bp overlaps are unambiguous (no accidental repeats).
+GIBSON_TARGET = (
+    "ATGCGTACGTTGACCTGAGCATGCTAGGCTAACGTTCAGGATCCGATTACGATCGTAG"
+    "CTAGCATCGATCGTTAGCACCGGTTAAGCTCAAT"
+)
+
+
+def _split_with_overlaps(seq: str, overlap: int = 20) -> list[str]:
+    """Split a circular sequence into 3 fragments sharing `overlap` bp ends."""
+    n = len(seq)
+    p1, p2 = n // 3, 2 * n // 3
+    f0 = seq[0:p1 + overlap]
+    f1 = seq[p1:p2 + overlap]
+    f2 = seq[p2:n] + seq[0:overlap]
+    return [f0, f1, f2]
+
+
+def test_gibson_assembles_designed_overlaps(client: TestClient) -> None:
+    frags = _split_with_overlaps(GIBSON_TARGET, 20)
+    # Shuffle input order; assembly must still recover the circle.
+    shuffled = [frags[2], frags[0], frags[1]]
+    r = client.post("/cloning/gibson", json={"fragments": shuffled, "min_overlap": 15})
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["product"]["is_circular"] is True
+    assert len(data["product"]["seq"]) == len(GIBSON_TARGET)
+    # Circular product is defined up to rotation.
+    assert GIBSON_TARGET in (data["product"]["seq"] + data["product"]["seq"])
+    assert sorted(data["order"]) == [0, 1, 2]
+    assert len(data["junctions"]) == 3
+    assert all(j["overlap_length"] == 20 for j in data["junctions"])
+
+
+def test_gibson_no_valid_ordering_fails_clearly(client: TestClient) -> None:
+    frags = ["A" * 40, "C" * 40, "G" * 40]  # no shared ends
+    r = client.post("/cloning/gibson", json={"fragments": frags, "min_overlap": 15})
+    assert r.status_code == 400
+    assert "No valid circular assembly" in r.json()["detail"]
+
+
+def test_gibson_ambiguous_ordering_refused(client: TestClient) -> None:
+    """Identical linkers on every end -> multiple valid orderings -> refuse."""
+    linker = "ACGTACCTGAGTCAGGTTGC"  # 20 bp, non-periodic
+    frags = [linker + mid + linker for mid in ("TTTAAACCC", "GAGATCTGA", "TCAGGTACC")]
+    r = client.post("/cloning/gibson", json={"fragments": frags, "min_overlap": 15})
+    assert r.status_code == 400
+    assert "Ambiguous" in r.json()["detail"]
