@@ -44,6 +44,10 @@ e2e test, since there is no live website to drive.
    Release itself, all automated in `.github/workflows/release.yml`).
    - **PATCH** (`X.Y.Z`→`X.Y.(Z+1)`): the default for an ordinary push — a fix, a small
      feature, routine landed work.
+   - **Skip the bump entirely** for pushes that touch only `docs/` (the marketing site)
+     or other non-app infra (e.g. `cloudflare-worker/`) with zero changes under `backend/`
+     or `gui/` — tagging would trigger a full mac/Windows/Linux rebuild that produces a
+     byte-identical app binary, which wastes CI and ships a "release" with nothing in it.
    - **MINOR** (`X.Y.Z`→`X.(Y+1).0`): a major functional milestone — a whole epic/feature
      area shipped (e.g. an entire new panel, a significant capability like plasmid/circular
      support or the workflow builder), not just one commit in that direction. Use judgment;
