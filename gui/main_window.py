@@ -16,6 +16,7 @@ from .styles import DARK_STYLESHEET
 from .panels import (
     SequencePanel, SearchPanel, CRISPRPanel,
     AlignmentPanel, PrimersPanel, VariantsPanel, PathwaysPanel, WorkflowPanel,
+    SettingsPanel,
 )
 from .updater import UpdateChecker
 from .update_dialog import UpdateDialog
@@ -119,6 +120,7 @@ class MainWindow(QMainWindow):
         self._variants_panel = VariantsPanel()
         self._pathways_panel = PathwaysPanel()
         self._workflow_panel = WorkflowPanel()
+        self._settings_panel = SettingsPanel()
 
         # Connect cross-panel signals
         self._seq_panel.sequence_selected.connect(self._on_seq_selected)
@@ -138,6 +140,7 @@ class MainWindow(QMainWindow):
         _add(self._variants_panel, "🔬", "Variants")
         _add(self._pathways_panel, "🗺️", "Pathways")
         _add(self._workflow_panel, "⛓", "Workflow")
+        _add(self._settings_panel, "⚙", "Settings")
 
         layout.addWidget(self._tabs)
 
