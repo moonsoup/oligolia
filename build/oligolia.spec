@@ -86,6 +86,8 @@ datas = [
     (os.path.join(project_root, "assets", "icon.png"), "assets"),
     # Version file — bundled so the app knows its own version at runtime
     (os.path.join(project_root, "version.py"), "."),
+    # Bundled reference library of common vector parts (issue #42)
+    (os.path.join(project_root, "backend", "data"), "backend/data"),
 ]
 
 # ── Analysis ──────────────────────────────────────────────────────────────────

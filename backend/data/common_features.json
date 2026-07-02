@@ -1,0 +1,109 @@
+{
+  "_comment": "Seed reference library of common plasmid vector parts for auto-annotation (issue #42). Flat, easy to extend — community additions welcome. Coding parts carry a `translation` that is verified against the DNA in tests. Longer ORF parts (origins of replication, resistance markers, fluorescent proteins) are a natural extension: add them here with an exact GenBank-sourced sequence.",
+  "parts": [
+    {
+      "name": "T7 promoter",
+      "feature_type": "promoter",
+      "sequence": "TAATACGACTCACTATAG",
+      "source": "Bacteriophage T7 RNA polymerase consensus promoter (-17..+1); e.g. pET vectors"
+    },
+    {
+      "name": "T3 promoter",
+      "feature_type": "promoter",
+      "sequence": "AATTAACCCTCACTAAAG",
+      "source": "Bacteriophage T3 RNA polymerase promoter; e.g. pBluescript"
+    },
+    {
+      "name": "SP6 promoter",
+      "feature_type": "promoter",
+      "sequence": "ATTTAGGTGACACTATAG",
+      "source": "Bacteriophage SP6 RNA polymerase promoter; e.g. pGEM/pCR vectors"
+    },
+    {
+      "name": "lac operator",
+      "feature_type": "protein_bind",
+      "sequence": "AATTGTGAGCGCTCACAATT",
+      "source": "T7lac operator (LacI binding site) used in pET vectors to suppress leaky expression"
+    },
+    {
+      "name": "RBS (T7 gene 10)",
+      "feature_type": "RBS",
+      "sequence": "AAGGAG",
+      "source": "T7 gene 10 Shine-Dalgarno ribosome binding site; pET translation initiation"
+    },
+    {
+      "name": "T7 terminator",
+      "feature_type": "terminator",
+      "sequence": "CTAGCATAACCCCTTGGGGCCTCTAAACGGGTCTTGAGGGGTTTTTTG",
+      "source": "Bacteriophage T7 T-phi transcription terminator; pET vectors"
+    },
+    {
+      "name": "M13 fwd primer",
+      "feature_type": "primer_bind",
+      "sequence": "GTAAAACGACGGCCAGT",
+      "source": "M13/pUC (-20) forward sequencing primer binding site"
+    },
+    {
+      "name": "M13 rev primer",
+      "feature_type": "primer_bind",
+      "sequence": "CAGGAAACAGCTATGAC",
+      "source": "M13/pUC reverse sequencing primer binding site"
+    },
+    {
+      "name": "6xHis tag",
+      "feature_type": "CDS",
+      "sequence": "CACCACCACCACCACCAC",
+      "translation": "HHHHHH",
+      "source": "Hexahistidine purification tag (one common CAC codon usage)"
+    },
+    {
+      "name": "FLAG tag",
+      "feature_type": "CDS",
+      "sequence": "GACTACAAGGACGACGACGACAAG",
+      "translation": "DYKDDDDK",
+      "source": "FLAG epitope tag (Sigma); peptide DYKDDDDK"
+    },
+    {
+      "name": "HA tag",
+      "feature_type": "CDS",
+      "sequence": "TACCCATACGATGTTCCAGATTACGCT",
+      "translation": "YPYDVPDYA",
+      "source": "Influenza hemagglutinin (HA) epitope tag; peptide YPYDVPDYA"
+    },
+    {
+      "name": "Myc tag",
+      "feature_type": "CDS",
+      "sequence": "GAACAAAAACTCATCTCAGAAGAGGATCTG",
+      "translation": "EQKLISEEDL",
+      "source": "c-Myc epitope tag; peptide EQKLISEEDL"
+    },
+    {
+      "name": "Strep-tag II",
+      "feature_type": "CDS",
+      "sequence": "TGGAGCCACCCGCAGTTCGAAAAA",
+      "translation": "WSHPQFEK",
+      "source": "Strep-tag II (IBA); peptide WSHPQFEK"
+    },
+    {
+      "name": "SV40 NLS",
+      "feature_type": "CDS",
+      "sequence": "CCAAAGAAGAAGAGGAAGGTC",
+      "translation": "PKKKRKV",
+      "source": "SV40 large T antigen nuclear localization signal; peptide PKKKRKV"
+    },
+    {
+      "name": "TEV protease site",
+      "feature_type": "CDS",
+      "sequence": "GAAAACCTGTACTTCCAGGGC",
+      "translation": "ENLYFQG",
+      "source": "Tobacco etch virus (TEV) protease cleavage site; peptide ENLYFQG"
+    },
+    {
+      "name": "Factor Xa site",
+      "feature_type": "CDS",
+      "sequence": "ATCGAAGGTCGT",
+      "translation": "IEGR",
+      "source": "Factor Xa protease cleavage site; peptide IEGR"
+    }
+  ]
+}

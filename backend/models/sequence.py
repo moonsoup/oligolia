@@ -41,6 +41,22 @@ class Sequence(BaseModel):
             self.length = len(self.seq)
 
 
+class ReferenceFeature(BaseModel):
+    """A known vector part in the bundled reference library (issue #42).
+
+    ``translation`` is set for coding parts (the peptide the DNA should encode)
+    and None for non-coding parts (promoters, operators, terminators, primer
+    binding sites). The homology-scan feature (#43) consumes these records.
+    """
+
+    name: str
+    feature_type: str
+    sequence: str
+    molecule_type: MoleculeType = MoleculeType.DNA
+    translation: str | None = None
+    source: str = ""
+
+
 class SequenceEditRequest(BaseModel):
     operation: str  # insert | delete | replace | reverse_complement | translate | complement
     position: int | None = None
