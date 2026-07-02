@@ -128,14 +128,14 @@ def test_circular_digest_n_fragments_for_n_cuts(client: TestClient) -> None:
                     json={"template": CIRCULAR_ECORI, "enzymes": ["EcoRI"], "is_circular": True})
     assert r.status_code == 200
     data = r.json()
-    # Cuts at 17 (internal 11+6) and 1 (origin-spanning (27+6)%32).
-    assert sorted(data["cut_positions"]) == [1, 17]
+    # Real EcoRI geometry (G^AATTC): internal cut at 12 and origin-spanning at 28.
+    assert sorted(data["cut_positions"]) == [12, 28]
     frags = data["fragments"]
     assert len(frags) == 2  # N cuts -> N fragments
     assert sum(f["length"] for f in frags) == len(CIRCULAR_ECORI)
     # The origin-spanning fragment reconstructs across the junction.
-    wrap = next(f for f in frags if f["end"] < f["start"] or f["start"] == 17)
-    assert wrap["sequence"] == CIRCULAR_ECORI[17:] + CIRCULAR_ECORI[:1]
+    wrap = next(f for f in frags if f["end"] < f["start"])
+    assert wrap["sequence"] == CIRCULAR_ECORI[wrap["start"]:] + CIRCULAR_ECORI[:wrap["end"]]
 
 
 def test_linear_digest_unchanged(client: TestClient) -> None:
@@ -143,6 +143,50 @@ def test_linear_digest_unchanged(client: TestClient) -> None:
     r = client.post("/primers/digest",
                     json={"template": CIRCULAR_ECORI, "enzymes": ["EcoRI"]})
     data = r.json()
-    assert data["cut_positions"] == [17]        # only the internal site cuts
+    assert data["cut_positions"] == [12]        # only the internal site cuts, real geometry
     assert len(data["fragments"]) == 2          # N+1 = 2 fragments for 1 cut
     assert sum(f["length"] for f in data["fragments"]) == len(CIRCULAR_ECORI)
+
+
+# ── Real cut geometry + overhangs (issue #34) ─────────────────────────────────
+
+def test_digest_real_cut_geometry_ecori(client: TestClient) -> None:
+    """EcoRI cuts G^AATTC, not after the whole site — verified vs NEB geometry."""
+    r = client.post("/primers/digest",
+                    json={"template": "AAAGAATTCTTT", "enzymes": ["EcoRI"]})
+    data = r.json()
+    assert data["cut_positions"] == [4]  # after the G in AAAG^AATTC
+    seqs = {f["sequence"] for f in data["fragments"]}
+    assert seqs == {"AAAG", "AATTCTTT"}
+
+
+def test_digest_5prime_overhang(client: TestClient) -> None:
+    r = client.post("/primers/digest",
+                    json={"template": "AAAGAATTCTTT", "enzymes": ["EcoRI"]})
+    frags = r.json()["fragments"]
+    # Both ends flanking the cut carry the 5' AATT overhang.
+    left = next(f for f in frags if f["start"] == 0)
+    right = next(f for f in frags if f["start"] == 4)
+    assert left["right_overhang_type"] == "5'" and left["right_overhang"] == "AATT"
+    assert right["left_overhang_type"] == "5'" and right["left_overhang"] == "AATT"
+    # Free linear termini have no overhang.
+    assert left["left_overhang_type"] == "none"
+    assert right["right_overhang_type"] == "none"
+
+
+def test_digest_3prime_overhang(client: TestClient) -> None:
+    r = client.post("/primers/digest",
+                    json={"template": "AAACTGCAGTTT", "enzymes": ["PstI"]})
+    frags = r.json()["fragments"]
+    up = next(f for f in frags if f["start"] == 0)
+    assert up["right_overhang_type"] == "3'" and up["right_overhang"] == "TGCA"
+
+
+def test_digest_blunt_cutter(client: TestClient) -> None:
+    r = client.post("/primers/digest",
+                    json={"template": "AAACCCGGGTTT", "enzymes": ["SmaI"]})
+    frags = r.json()["fragments"]
+    inner = [f for f in frags if f["left_overhang_type"] == "blunt" or f["right_overhang_type"] == "blunt"]
+    assert inner  # the cut produced blunt ends
+    for f in frags:
+        assert f["left_overhang"] == "" and f["right_overhang"] == ""

@@ -3,6 +3,8 @@
 import re
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from Bio import Restriction
+from Bio.Seq import Seq
 
 router = APIRouter(prefix="/primers", tags=["primers"])
 
@@ -143,33 +145,17 @@ def design_primers(req: PrimerDesignRequest) -> list[PrimerPair]:
     return pairs[:req.max_pairs]
 
 
-# Common restriction enzymes with recognition sequences
-RESTRICTION_ENZYMES = {
-    "EcoRI":  "GAATTC",
-    "BamHI":  "GGATCC",
-    "HindIII": "AAGCTT",
-    "SalI":   "GTCGAC",
-    "XbaI":   "TCTAGA",
-    "SmaI":   "CCCGGG",
-    "KpnI":   "GGTACC",
-    "SacI":   "GAGCTC",
-    "NotI":   "GCGGCCGC",
-    "XhoI":   "CTCGAG",
-    "NcoI":   "CCATGG",
-    "NdeI":   "CATATG",
-    "ClaI":   "ATCGAT",
-    "SphI":   "GCATGC",
-    "PstI":   "CTGCAG",
-    "PvuII":  "CAGCTG",
-    "AvaI":   "CYCGRG",
-    "AvaII":  "GGWCC",
-    "EcoRV":  "GATATC",
-    "MluI":   "ACGCGT",
-    "NheI":   "GCTAGC",
-    "AgeI":   "ACCGGT",
-    "BglII":  "AGATCT",
-    "MfeI":   "CAATTG",
-}
+# Curated enzyme panel. Recognition sequences AND cut geometry (overhangs,
+# real cut positions) are sourced from Bio.Restriction — the authoritative,
+# vendored dataset — rather than hand-maintained (issue #34).
+_CURATED_ENZYMES = [
+    "EcoRI", "BamHI", "HindIII", "SalI", "XbaI", "SmaI", "KpnI", "SacI",
+    "NotI", "XhoI", "NcoI", "NdeI", "ClaI", "SphI", "PstI", "PvuII",
+    "AvaI", "AvaII", "EcoRV", "MluI", "NheI", "AgeI", "BglII", "MfeI",
+]
+_ENZYMES = {name: getattr(Restriction, name) for name in _CURATED_ENZYMES}
+# name -> IUPAC recognition sequence (used for site mapping in restriction_sites)
+RESTRICTION_ENZYMES = {name: enz.site for name, enz in _ENZYMES.items()}
 
 IUPAC = {"R": "[AG]", "Y": "[CT]", "S": "[GC]", "W": "[AT]",
          "K": "[GT]", "M": "[AC]", "B": "[CGT]", "D": "[AGT]",
@@ -237,6 +223,36 @@ class DigestFragment(BaseModel):
     end: int
     length: int
     sequence: str
+    # Single-stranded overhang produced by the cut at each end. Type is
+    # "5'", "3'", "blunt" (blunt cutter), or "none" (a free linear terminus).
+    # Overhang bases are given on the top strand; for the palindromic-site
+    # enzymes in this panel that equals the complementary end's overhang.
+    left_overhang: str = ""
+    left_overhang_type: str = "none"
+    right_overhang: str = ""
+    right_overhang_type: str = "none"
+
+
+def _overhang_at(template: str, cut: int, ovhg: int, is_circular: bool) -> tuple[str, str]:
+    """Return (overhang_bases, type) for a top-strand cut at 0-based ``cut``.
+
+    ``ovhg`` follows Bio.Restriction's sign convention: negative = 5' overhang,
+    positive = 3' overhang, 0 = blunt.
+    """
+    if ovhg == 0:
+        return "", "blunt"
+    if ovhg < 0:  # 5' overhang spans [cut, cut - ovhg)
+        idxs = range(cut, cut - ovhg)
+        oh_type = "5'"
+    else:  # 3' overhang spans [cut - ovhg, cut)
+        idxs = range(cut - ovhg, cut)
+        oh_type = "3'"
+    n = len(template)
+    if is_circular:
+        bases = "".join(template[i % n] for i in idxs)
+    else:
+        bases = "".join(template[i] for i in idxs if 0 <= i < n)
+    return bases, oh_type
 
 
 class DigestResult(BaseModel):
@@ -257,17 +273,25 @@ def digest(req: DigestRequest) -> DigestResult:
         raise HTTPException(400, f"Unknown enzymes: {unknown}. Supported: {sorted(RESTRICTION_ENZYMES)}")
 
     n = len(template)
-    # Collect all cut positions across all requested enzymes
-    cut_positions: list[int] = []
+    # Real cut geometry from Bio.Restriction: search() gives 1-based top-strand
+    # cut positions; 0-based cut index (where the downstream fragment starts) is
+    # position - 1. Overhang for each cut is derived from the enzyme's ovhg.
+    bio_seq = Seq(template)
+    linear = not req.is_circular
+    cut_overhangs: dict[int, tuple[str, str]] = {}
     for enzyme in req.enzymes:
-        recog = RESTRICTION_ENZYMES[enzyme]
-        for s in _find_sites(template, recog, req.is_circular):
-            pos = s + len(recog)  # cut after recognition sequence
-            if req.is_circular:
-                pos %= n  # origin-spanning site cuts back into the head
-            cut_positions.append(pos)
+        enz = _ENZYMES[enzyme]
+        for pos in enz.search(bio_seq, linear=linear):
+            cut = (pos - 1) % n if req.is_circular else (pos - 1)
+            cut_overhangs[cut] = _overhang_at(template, cut, enz.ovhg, req.is_circular)
 
-    cut_positions = sorted(set(cut_positions))
+    cut_positions = sorted(cut_overhangs)
+
+    def _ends(start: int, end: int) -> dict:
+        lo, lt = cut_overhangs.get(start, ("", "none"))
+        ro, rt = cut_overhangs.get(end, ("", "none"))
+        return {"left_overhang": lo, "left_overhang_type": lt,
+                "right_overhang": ro, "right_overhang_type": rt}
 
     fragments: list[DigestFragment] = []
     if req.is_circular:
@@ -287,7 +311,7 @@ def digest(req: DigestRequest) -> DigestResult:
                     seq = template[start:] + template[:end]
                     length = (n - start) + end
                 fragments.append(DigestFragment(
-                    start=start, end=end, length=length, sequence=seq,
+                    start=start, end=end, length=length, sequence=seq, **_ends(start, end),
                 ))
     else:
         # Linear: N cuts yield N+1 fragments, including the two end pieces.
@@ -297,7 +321,7 @@ def digest(req: DigestRequest) -> DigestResult:
             seq = template[start:end]
             if seq:
                 fragments.append(DigestFragment(
-                    start=start, end=end, length=len(seq), sequence=seq,
+                    start=start, end=end, length=len(seq), sequence=seq, **_ends(start, end),
                 ))
 
     fragments.sort(key=lambda f: -f.length)
