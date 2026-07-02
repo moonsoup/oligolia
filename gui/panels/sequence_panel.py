@@ -227,6 +227,11 @@ class FeatureHighlighter(QSyntaxHighlighter):
                 continue
             fmt = QTextCharFormat()
             fmt.setBackground(self._color_map[ann.feature_type])
+            # Auto-detected features (issue #44) get a dashed underline so they
+            # read as distinct from user/GenBank-provided annotations.
+            if ann.qualifiers.get("auto_detected") == "true":
+                fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.DashUnderline)
+                fmt.setUnderlineColor(QColor("#e2e8f0"))
             self.setFormat(start, end - start, fmt)
 
 
@@ -509,12 +514,35 @@ class SequencePanel(QWidget):
         self._insert_widget.setVisible(op in ("insert", "replace"))
 
     def add_sequence(self, seq: Sequence) -> None:
+        self._auto_annotate(seq)
         self._sequences[seq.id] = seq
         item = QListWidgetItem(f"{'🔵' if seq.molecule_type == MoleculeType.DNA else '🟡' if seq.molecule_type == MoleculeType.RNA else '🟣'} {seq.id}")
         item.setData(Qt.ItemDataRole.UserRole, seq.id)
         item.setToolTip(f"{seq.length:,} bp · {seq.molecule_type.value}")
         self._list.addItem(item)
         self._list.setCurrentItem(item)
+
+    # Skip the scan on very large sequences (genomic, not plasmid-scale) to
+    # keep loading responsive — the reference parts target plasmids.
+    _AUTO_ANNOTATE_MAX_BP = 50_000
+
+    def _auto_annotate(self, seq: Sequence) -> None:
+        """Fill in common-part annotations on load when a DNA sequence has none.
+
+        Only runs when there are no existing annotations (never overwrites
+        real ones, e.g. from a GenBank file) and never blocks loading on error.
+        """
+        if seq.annotations or seq.molecule_type != MoleculeType.DNA:
+            return
+        if len(seq.seq) > self._AUTO_ANNOTATE_MAX_BP:
+            return
+        try:
+            from backend.formats import auto_annotate
+            hits = auto_annotate(seq.seq)
+        except Exception:
+            return  # annotation is best-effort; loading must not fail
+        if hits:
+            seq.annotations = hits
 
     def _on_seq_selected(self, item: QListWidgetItem | None, _: object = None) -> None:
         if not item:
