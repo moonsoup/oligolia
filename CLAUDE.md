@@ -17,7 +17,7 @@ align sequences, annotate variants — all offline, packaged as a native install
 | Backend | FastAPI, embedded and launched by the GUI process (`backend/`) |
 | Bio | Biopython |
 | Packaging | PyInstaller → DMG (macOS) / Inno Setup (Windows) / AppImage (Linux) |
-| Distribution | GitHub Releases — **built on version-tag push only**, not on every push to main |
+| Distribution | GitHub Releases — built on version-tag push, which Claude now creates routinely per push to `main` (see rule 3) |
 | Repo | moonsoup/oligolia (public) |
 
 ## Running / Testing Locally
@@ -38,11 +38,21 @@ e2e test, since there is no live website to drive.
 
 1. **Lint before commit:** `ruff check backend/ gui/` (or the specific changed files). Never commit failing lint.
 2. **Push directly to `main`** — solo/small-team project, no PR review ceremony.
-3. **Version bumps are batched, not per-fix.** Land fixes on `main` as normal commits with
-   no version change. Only bump `version.py`, commit "Bump to X.Y.Z", tag `vX.Y.Z`, and push
-   the tag when actually cutting a release — that tag push is what triggers the GitHub
-   Actions build/release. Pushing to `main` alone does **not** auto-release or auto-deploy
-   (unlike atp-siege's deploy-on-push model).
+3. **Versioning policy (Claude decides, per push to `main`):** bump `version.py`, commit
+   "Bump to X.Y.Z", tag `vX.Y.Z`, and push the tag after landing work on `main` — that tag
+   push is what triggers the GitHub Actions build/release (mac/Windows/Linux + the GitHub
+   Release itself, all automated in `.github/workflows/release.yml`).
+   - **PATCH** (`X.Y.Z`→`X.Y.(Z+1)`): the default for an ordinary push — a fix, a small
+     feature, routine landed work.
+   - **MINOR** (`X.Y.Z`→`X.(Y+1).0`): a major functional milestone — a whole epic/feature
+     area shipped (e.g. an entire new panel, a significant capability like plasmid/circular
+     support or the workflow builder), not just one commit in that direction. Use judgment;
+     err toward PATCH for anything ambiguous.
+   - **MAJOR**: not part of this routine policy — reserved for a deliberate, explicitly
+     user-directed milestone (e.g. a 1.0 launch), not something to bump automatically.
+   - This authority belongs to the interactive Claude session, not the autonomous remote
+     loop — the remote pushes fixes to `main` but does not itself decide to bump/tag/release
+     (see "Differences from atp-siege's loop" below).
 4. **Release assets need two filenames:** a stable one (`Oligolia-mac.dmg`, used by
    Pages/README, never changes) and a versioned one (`Oligolia-X.Y.Z-mac.dmg`). Every
    release must upload both.
@@ -92,9 +102,11 @@ here, and `remote_switch.sh atpsiege` to hand it back.
 | Health check (stuck?) | `python3 scripts/loop_health_check.py --tmux` |
 
 **Differences from atp-siege's loop:**
-- No live-site deploy-on-push — pushing to `main` just lands the fix. A release (and the
-  installers it produces) only happens on a deliberate version-tag push (see rule 3 above).
-  The remote agent should push fixes to `main` but **not** cut releases itself.
+- No live-site deploy-on-push in the sense of the remote loop itself triggering it — the
+  remote agent pushes fixes to `main` but does **not** bump `version.py`, tag, or cut
+  releases itself. That decision (see rule 3 above) belongs to the interactive Claude
+  session, which now bumps and tags routinely (patch per push, minor per major milestone)
+  rather than only at deliberate, occasional release moments.
 - DISCOVER step uses `.claude/qa/run_all.sh`, not a Playwright/axe-core playtest agent.
 - VERIFY step re-runs `cd backend && .venv/bin/python -m pytest tests/ -q` for backend
   fixes, or the offscreen-Qt screenshot pattern above for GUI fixes — there's no live URL
