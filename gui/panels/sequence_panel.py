@@ -310,6 +310,15 @@ class SequencePanel(QWidget):
         options_bar = QToolBar()
         options_bar.setMovable(False)
 
+        # Topology toggle — always visible, editable per selected sequence.
+        self._circular_check = QCheckBox("Circular")
+        self._circular_check.setToolTip(
+            "Circular (plasmid) vs linear topology. Affects origin-spanning "
+            "restriction/digest analysis; preserved across edits and GenBank export.")
+        self._circular_check.toggled.connect(self._on_circular_toggled)
+        options_bar.addWidget(self._circular_check)
+        options_bar.addSeparator()
+
         options_bar.addWidget(QLabel(" Select: "))
         self._sel_start = QSpinBox(); self._sel_start.setMaximum(999_999_999)
         self._sel_end = QSpinBox(); self._sel_end.setMaximum(999_999_999)
@@ -563,9 +572,16 @@ class SequencePanel(QWidget):
             return
         is_protein = seq.molecule_type == MoleculeType.PROTEIN
         gc_str = f"GC: {self._gc(seq.seq):.1f}%" if not is_protein else f"AA: {seq.length}"
+        topo = "" if is_protein else f"  ·  {'circular' if seq.is_circular else 'linear'}"
         self._info_label.setText(
-            f"{seq.name or seq.id}  ·  {seq.molecule_type.value}  ·  {seq.length:,} {'aa' if is_protein else 'bp'}  ·  {gc_str}"
+            f"{seq.name or seq.id}  ·  {seq.molecule_type.value}  ·  "
+            f"{seq.length:,} {'aa' if is_protein else 'bp'}  ·  {gc_str}{topo}"
         )
+        # Sync the topology toggle without triggering write-back; disabled for protein.
+        self._circular_check.blockSignals(True)
+        self._circular_check.setChecked(seq.is_circular)
+        self._circular_check.setEnabled(not is_protein)
+        self._circular_check.blockSignals(False)
         self._apply_highlighter(self._seq_display, is_protein)
         self._seq_display.setPlainText(seq.seq)
         self._sel_start.setMaximum(seq.length)
@@ -576,6 +592,17 @@ class SequencePanel(QWidget):
         self._on_frame_changed()
         self._feature_highlighter.setAnnotations(seq.annotations if self._feature_check.isChecked() else [])
         self._update_feature_legend()
+
+    def _on_circular_toggled(self, checked: bool) -> None:
+        """Persist the topology change onto the active sequence + list tooltip."""
+        if not self._active:
+            return
+        self._active.is_circular = checked
+        item = self._list.currentItem()
+        if item:
+            topo = "circular" if checked else "linear"
+            item.setToolTip(f"{self._active.length:,} bp · {self._active.molecule_type.value} · {topo}")
+        self._render_active()
 
     # ── Undo/redo ────────────────────────────────────────────────────────────
     def _install_shortcuts(self) -> None:
