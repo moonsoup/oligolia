@@ -217,7 +217,7 @@ class PrimersPanel(QWidget):
         self._asm_result.setReadOnly(True)
         self._asm_result.setPlaceholderText("Assembled product appears here…")
         from PyQt6.QtGui import QFont
-        self._asm_result.setFont(QFont("JetBrains Mono,Fira Code,Courier New", 11))
+        self._asm_result.setFont(QFont("JetBrains Mono", 11))
         asm_layout.addWidget(self._asm_result)
 
         tabs.addTab(asm_widget, "Assembly")
@@ -339,7 +339,7 @@ class PrimersPanel(QWidget):
                 item = QTableWidgetItem(val)
                 if col in (1, 2):
                     from PyQt6.QtGui import QFont
-                    item.setFont(QFont("JetBrains Mono,Courier New", 11))
+                    item.setFont(QFont("JetBrains Mono", 11))
                 self._pcr_table.setItem(i, col, item)
 
     def _run_digest(self) -> None:

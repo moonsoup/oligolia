@@ -44,14 +44,14 @@ class AlignmentPanel(QWidget):
         self._seq1 = QTextEdit()
         self._seq1.setPlaceholderText("Sequence 1…")
         self._seq1.setMaximumHeight(70)
-        self._seq1.setFont(QFont("JetBrains Mono,Courier New", 11))
+        self._seq1.setFont(QFont("JetBrains Mono", 11))
         pair_layout.addWidget(QLabel("Sequence 1:"))
         pair_layout.addWidget(self._seq1)
 
         self._seq2 = QTextEdit()
         self._seq2.setPlaceholderText("Sequence 2…")
         self._seq2.setMaximumHeight(70)
-        self._seq2.setFont(QFont("JetBrains Mono,Courier New", 11))
+        self._seq2.setFont(QFont("JetBrains Mono", 11))
         pair_layout.addWidget(QLabel("Sequence 2:"))
         pair_layout.addWidget(self._seq2)
 
@@ -74,7 +74,7 @@ class AlignmentPanel(QWidget):
 
         self._pair_result = QTextEdit()
         self._pair_result.setReadOnly(True)
-        self._pair_result.setFont(QFont("JetBrains Mono,Courier New", 11))
+        self._pair_result.setFont(QFont("JetBrains Mono", 11))
         pair_layout.addWidget(self._pair_result)
 
         tabs.addTab(pair_widget, "Pairwise")
@@ -86,7 +86,7 @@ class AlignmentPanel(QWidget):
         msa_layout.addWidget(QLabel("Enter sequences (one per line, format: >ID\\nSEQUENCE or just SEQUENCE):"))
         self._msa_input = QTextEdit()
         self._msa_input.setPlaceholderText(">seq1\nATGGTGCACCTGACT\n>seq2\nATGGTGCATCTGACT\n>seq3\nATGGTGCACCTGGCT")
-        self._msa_input.setFont(QFont("JetBrains Mono,Courier New", 11))
+        self._msa_input.setFont(QFont("JetBrains Mono", 11))
         msa_layout.addWidget(self._msa_input)
 
         btn_msa = QPushButton("Run MSA (MUSCLE or fallback)")
@@ -105,7 +105,7 @@ class AlignmentPanel(QWidget):
 
         self._msa_result = QTextEdit()
         self._msa_result.setReadOnly(True)
-        self._msa_result.setFont(QFont("JetBrains Mono,Courier New", 11))
+        self._msa_result.setFont(QFont("JetBrains Mono", 11))
         msa_layout.addWidget(self._msa_result)
 
         # Identity matrix

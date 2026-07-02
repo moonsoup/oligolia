@@ -467,7 +467,7 @@ class SequencePanel(QWidget):
         # Sequence display
         self._seq_display = QTextEdit()
         self._seq_display.setReadOnly(True)
-        self._seq_display.setFont(QFont("JetBrains Mono,Fira Code,Courier New", 11))
+        self._seq_display.setFont(QFont("JetBrains Mono", 11))
         # Per-base highlighter is set dynamically per molecule type (see _apply_highlighter).
         # Frame/feature highlighters are layered on top and stay attached; they no-op when off.
         self._dna_highlighter = DNAHighlighter(self._seq_display.document())
@@ -524,7 +524,7 @@ class SequencePanel(QWidget):
         self._result_display.setReadOnly(True)
         self._result_display.setPlaceholderText("Operation results appear here…")
         self._result_display.setMaximumHeight(130)
-        self._result_display.setFont(QFont("JetBrains Mono,Fira Code,Courier New", 11))
+        self._result_display.setFont(QFont("JetBrains Mono", 11))
         self._result_dna_hl = DNAHighlighter(self._result_display.document())
         self._result_prot_hl: ProteinHighlighter | None = None
 

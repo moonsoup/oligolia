@@ -9,7 +9,7 @@ QMainWindow, QDialog {
 QWidget {
     background-color: #0f172a;
     color: #e2e8f0;
-    font-family: -apple-system, "Segoe UI", "SF Pro Text", sans-serif;
+    font-family: "Inter", sans-serif;
     font-size: 13px;
 }
 
@@ -42,7 +42,7 @@ QTextEdit, QPlainTextEdit {
     color: #4ade80;
     border: 1px solid #1e293b;
     border-radius: 4px;
-    font-family: "JetBrains Mono", "Fira Code", "Courier New", monospace;
+    font-family: "JetBrains Mono", monospace;
     font-size: 12px;
     padding: 6px;
     selection-background-color: #1e4620;
@@ -238,7 +238,7 @@ QLabel#subheading {
 }
 
 QLabel#code {
-    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-family: "JetBrains Mono", monospace;
     color: #4ade80;
     background-color: #020617;
     padding: 4px 8px;

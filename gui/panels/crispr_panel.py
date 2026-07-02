@@ -176,7 +176,7 @@ class CRISPRPanel(QWidget):
                 item.setBackground(color)
                 if col == 1:
                     from PyQt6.QtGui import QFont
-                    item.setFont(QFont("JetBrains Mono,Fira Code,Courier New", 11))
+                    item.setFont(QFont("JetBrains Mono", 11))
                 self._table.setItem(i, col, item)
 
         self._btn_export.setEnabled(True)

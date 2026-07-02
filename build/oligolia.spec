@@ -84,6 +84,8 @@ datas = [
     (os.path.join(bio_path, "Align"), "Bio/Align"),
     # Application assets
     (os.path.join(project_root, "assets", "icon.png"), "assets"),
+    # Bundled fonts (issue #46) — loaded at startup via QFontDatabase
+    (os.path.join(project_root, "assets", "fonts"), "assets/fonts"),
     # Version file — bundled so the app knows its own version at runtime
     (os.path.join(project_root, "version.py"), "."),
     # Bundled reference library of common vector parts (issue #42)

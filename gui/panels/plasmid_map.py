@@ -160,7 +160,7 @@ class PlasmidMapWidget(QWidget):
         # ── bp-position ticks + labels ────────────────────────────────────
         interval = _tick_interval(self._length)
         tick_pen = QPen(QColor("#64748b"), 1)
-        label_font = QFont("JetBrains Mono,Fira Code,Courier New", 8)
+        label_font = QFont("JetBrains Mono", 8)
         painter.setFont(label_font)
         for pos in range(0, self._length, interval):
             inner = self._point(cx, cy, radius - 6, pos)
@@ -181,11 +181,11 @@ class PlasmidMapWidget(QWidget):
 
         # ── Centre label: name + size + topology ──────────────────────────
         painter.setPen(QPen(QColor("#e2e8f0"), 1))
-        painter.setFont(QFont("Inter,Helvetica,Arial", 11, QFont.Weight.Bold))
+        painter.setFont(QFont("Inter", 11, QFont.Weight.Bold))
         name_rect = QRectF(cx - radius, cy - 16, 2 * radius, 18)
         painter.drawText(name_rect, Qt.AlignmentFlag.AlignCenter, self._name or "(unnamed)")
         painter.setPen(QPen(QColor("#94a3b8"), 1))
-        painter.setFont(QFont("Inter,Helvetica,Arial", 9))
+        painter.setFont(QFont("Inter", 9))
         topo = "circular" if self._is_circular else "linear"
         size_rect = QRectF(cx - radius, cy + 4, 2 * radius, 16)
         painter.drawText(size_rect, Qt.AlignmentFlag.AlignCenter, f"{self._length:,} bp · {topo}")
@@ -193,7 +193,7 @@ class PlasmidMapWidget(QWidget):
 
     def _draw_features(self, painter: QPainter, cx: float, cy: float, radius: float) -> None:
         """Draw each annotation as a colored arc + strand arrowhead + label."""
-        label_font = QFont("Inter,Helvetica,Arial", 8)
+        label_font = QFont("Inter", 8)
         for ann, lane in self._lanes:
             r = self._lane_radius(lane, radius)
             if r < radius * 0.35:  # too many overlapping lanes to fit; skip inner ones
@@ -260,7 +260,7 @@ class PlasmidMapWidget(QWidget):
             return
 
         color = QColor(_CUT_COLOR)
-        painter.setFont(QFont("Inter,Helvetica,Arial", 8))
+        painter.setFont(QFont("Inter", 8))
 
         # 1) Radial ticks at each cut position.
         painter.setPen(QPen(color, 1))

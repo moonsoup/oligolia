@@ -26,16 +26,11 @@ def main() -> None:
     app.setApplicationVersion(VERSION)
     app.setOrganizationName("Oligolia")
 
-    # Use a clean system font — QFont.setFamily takes a single family name
-    import sys as _sys
-    if _sys.platform == "darwin":
-        font_family = "SF Pro Text"
-    elif _sys.platform == "win32":
-        font_family = "Segoe UI"
-    else:
-        font_family = "Ubuntu"
-    font = QFont(font_family, 13)
-    app.setFont(font)
+    # Register bundled fonts so rendering is consistent regardless of what is
+    # installed on the user's machine (issue #46), then use Inter for UI chrome.
+    from gui.fonts import FONT_UI, load_bundled_fonts
+    load_bundled_fonts()
+    app.setFont(QFont(FONT_UI, 13))
 
     window = MainWindow()
     window.show()
