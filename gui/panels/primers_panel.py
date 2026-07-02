@@ -34,6 +34,7 @@ class PrimersPanel(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._worker: Worker | None = None
+        self._last_digest = None  # most recent DigestResult, for restriction-ligation
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -144,7 +145,6 @@ class PrimersPanel(QWidget):
         self._dig_enzymes = QComboBox()
         self._dig_enzymes.setEditable(True)
         self._dig_enzymes.setMinimumWidth(260)
-        from backend.routers.primers import RESTRICTION_ENZYMES as _RE
         common = ["EcoRI,BamHI", "EcoRI,HindIII", "BamHI,HindIII", "EcoRI,BamHI,HindIII",
                   "NcoI,XhoI", "NdeI,XhoI", "NdeI,BamHI", "SalI,XbaI"]
         self._dig_enzymes.addItems(common)
@@ -166,6 +166,54 @@ class PrimersPanel(QWidget):
         self._dig_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         dig_layout.addWidget(self._dig_table)
         tabs.addTab(dig_widget, "Digest")
+
+        # ── Assembly ──────────────────────────────────────────────────────────
+        asm_widget = QWidget()
+        asm_layout = QVBoxLayout(asm_widget)
+
+        method_row = QHBoxLayout()
+        method_row.addWidget(QLabel("Method:"))
+        self._asm_method = QComboBox()
+        self._asm_method.addItems(
+            ["Gibson", "Golden Gate", "Restriction-ligation (from last digest)"])
+        self._asm_method.currentTextChanged.connect(self._on_asm_method_changed)
+        method_row.addWidget(self._asm_method, 1)
+
+        self._asm_gg_enzyme = QComboBox()
+        self._asm_gg_enzyme.addItems(["BsaI", "BsmBI", "Esp3I", "BbsI"])
+        self._asm_gg_label = QLabel("Enzyme:")
+        method_row.addWidget(self._asm_gg_label)
+        method_row.addWidget(self._asm_gg_enzyme)
+
+        self._asm_overlap_label = QLabel("Min overlap:")
+        method_row.addWidget(self._asm_overlap_label)
+        self._asm_overlap = QSpinBox(); self._asm_overlap.setRange(5, 60); self._asm_overlap.setValue(15)
+        method_row.addWidget(self._asm_overlap)
+
+        btn_asm = QPushButton("Assemble")
+        btn_asm.setObjectName("primary")
+        btn_asm.clicked.connect(self._run_assembly)
+        method_row.addWidget(btn_asm)
+        asm_layout.addLayout(method_row)
+
+        self._asm_input = QTextEdit()
+        self._asm_input.setPlaceholderText(
+            "One fragment (Gibson) or part (Golden Gate) sequence per line…")
+        self._asm_input.setMaximumHeight(110)
+        asm_layout.addWidget(self._asm_input)
+
+        self._asm_status = QLabel(""); self._asm_status.setObjectName("subheading")
+        asm_layout.addWidget(self._asm_status)
+
+        self._asm_result = QTextEdit()
+        self._asm_result.setReadOnly(True)
+        self._asm_result.setPlaceholderText("Assembled product appears here…")
+        from PyQt6.QtGui import QFont
+        self._asm_result.setFont(QFont("JetBrains Mono,Fira Code,Courier New", 11))
+        asm_layout.addWidget(self._asm_result)
+
+        tabs.addTab(asm_widget, "Assembly")
+        self._on_asm_method_changed(self._asm_method.currentText())
 
         layout.addWidget(tabs)
 
@@ -298,6 +346,7 @@ class PrimersPanel(QWidget):
         from backend.routers.primers import digest, DigestRequest
         try:
             result = digest(DigestRequest(template=template, enzymes=enzymes))
+            self._last_digest = result  # available to the Assembly tab
             n = len(result.fragments)
             cuts = len(result.cut_positions)
             self._dig_status.setText(
@@ -333,3 +382,79 @@ class PrimersPanel(QWidget):
                     self._re_table.setItem(i, col, item)
         except Exception as e:
             self._re_status.setText(f"Error: {e}")
+
+    # ── Assembly ────────────────────────────────────────────────────────────
+
+    def _on_asm_method_changed(self, method: str) -> None:
+        is_gg = method.startswith("Golden")
+        is_gibson = method.startswith("Gibson")
+        is_ligation = method.startswith("Restriction")
+        self._asm_gg_enzyme.setVisible(is_gg)
+        self._asm_gg_label.setVisible(is_gg)
+        self._asm_overlap.setVisible(is_gibson)
+        self._asm_overlap_label.setVisible(is_gibson)
+        self._asm_input.setVisible(not is_ligation)
+        if is_ligation:
+            self._asm_status.setText(
+                "Ligates the fragments from the most recent Digest (in order) into a circle.")
+        else:
+            self._asm_status.setText("")
+
+    def _asm_lines(self) -> list[str]:
+        return [ln.strip().upper().replace(" ", "")
+                for ln in self._asm_input.toPlainText().splitlines() if ln.strip()]
+
+    def _run_assembly(self) -> None:
+        from fastapi import HTTPException
+        method = self._asm_method.currentText()
+        self._asm_result.clear()
+        try:
+            if method.startswith("Gibson"):
+                from backend.routers.cloning import gibson, GibsonRequest
+                frags = self._asm_lines()
+                if len(frags) < 2:
+                    QMessageBox.warning(self, "Need fragments", "Enter at least 2 fragment sequences (one per line).")
+                    return
+                res = gibson(GibsonRequest(fragments=frags, min_overlap=self._asm_overlap.value()))
+            elif method.startswith("Golden"):
+                from backend.routers.cloning import golden_gate, GoldenGateRequest
+                parts = self._asm_lines()
+                if len(parts) < 2:
+                    QMessageBox.warning(self, "Need parts", "Enter at least 2 part sequences (one per line).")
+                    return
+                res = golden_gate(GoldenGateRequest(parts=parts, enzyme=self._asm_gg_enzyme.currentText()))
+            else:  # Restriction-ligation from last digest
+                from backend.routers.cloning import ligate, LigationRequest, LigationFragment
+                if not self._last_digest or len(self._last_digest.fragments) < 2:
+                    QMessageBox.warning(self, "No fragments",
+                                        "Run a Digest producing ≥2 fragments first (Digest tab).")
+                    return
+                ordered = sorted(self._last_digest.fragments, key=lambda f: f.start)
+                frags = [LigationFragment(**f.model_dump()) for f in ordered]
+                # A linear digest has free ends on its terminal fragments and
+                # cannot circularize; only close the loop when every end is a cut.
+                free_ends = (ordered[0].left_overhang_type == "none"
+                             or ordered[-1].right_overhang_type == "none")
+                res = ligate(LigationRequest(fragments=frags, circular=not free_ends))
+        except HTTPException as e:
+            self._asm_status.setText(f"Assembly failed: {e.detail}")
+            QMessageBox.critical(self, "Assembly failed", str(e.detail))
+            return
+        except Exception as e:
+            self._asm_status.setText(f"Error: {e}")
+            QMessageBox.critical(self, "Error", str(e))
+            return
+
+        product = res.product
+        topo = "circular" if product.is_circular else "linear"
+        njunc = len(res.junctions)
+        self._asm_status.setText(
+            f"✓ {topo} product · {product.length:,} bp · {njunc} junction{'s' if njunc != 1 else ''}"
+            + (f"  ⚠ {len(res.warnings)} warning(s)" if res.warnings else "")
+        )
+        preview = product.seq if len(product.seq) <= 400 else product.seq[:400] + "…"
+        lines = [f"// {product.name} ({topo}, {product.length:,} bp)", preview]
+        if res.warnings:
+            lines.append("")
+            lines += [f"⚠ {w}" for w in res.warnings]
+        self._asm_result.setPlainText("\n".join(lines))
