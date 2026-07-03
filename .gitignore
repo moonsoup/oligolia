@@ -26,3 +26,6 @@ dist/
 build/work/
 .claude/qa/
 .claude/agent_comms.json
+
+# playtest human-mode recordings (lib/qt_recording.py, specialties/genetics.py)
+videos/
