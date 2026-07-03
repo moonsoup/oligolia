@@ -8,9 +8,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QTableWidget, QTableWidgetItem, QPlainTextEdit, QTabWidget,
-    QHeaderView, QMessageBox, QComboBox, QSpinBox, QGroupBox,
+    QHeaderView, QMessageBox, QComboBox, QGroupBox,
 )
-from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QColor, QDesktopServices
 from PyQt6.QtCore import QUrl
 

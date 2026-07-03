@@ -30,7 +30,10 @@ import tarfile
 import shutil
 import logging
 from pathlib import Path
+
+import httpx
 from packaging.version import Version
+from PyQt6.QtCore import QThread, pyqtSignal
 
 # Write update diagnostics to a log file the user can inspect
 _log_path = Path(tempfile.gettempdir()) / "oligolia_update.log"
@@ -42,9 +45,6 @@ logging.basicConfig(
 _log = logging.getLogger("oligolia.updater")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-import httpx
-from PyQt6.QtCore import QThread, pyqtSignal
 
 try:
     from version import VERSION, RELEASES_API_URL, RELEASES_PAGE_URL
