@@ -83,6 +83,23 @@ def test_credentials_are_namespaced_per_vendor():
     assert credentials.get_credential("twist", "api_key") == "twist-key"
 
 
+def test_keychain_namespace_defaults_to_real_prefix():
+    assert credentials._service_name("idt") == "oligolia-ordering:idt"
+
+
+def test_keychain_namespace_env_override_isolates_from_real(monkeypatch):
+    # A test harness can point at an isolated namespace; nothing saved there
+    # is visible under the default (real) namespace, and vice-versa (#47).
+    monkeypatch.setenv("OLIGOLIA_KEYCHAIN_NAMESPACE", "oligolia-test-xyz")
+    assert credentials._service_name("idt") == "oligolia-test-xyz:idt"
+    credentials.save_credential("idt", "api_key", "isolated")
+    assert credentials.get_credential("idt", "api_key") == "isolated"
+
+    monkeypatch.delenv("OLIGOLIA_KEYCHAIN_NAMESPACE")
+    # Back on the default namespace, the isolated value is invisible.
+    assert credentials.get_credential("idt", "api_key") is None
+
+
 # ── providers.py ─────────────────────────────────────────────────────────────
 
 def test_idt_test_connection_no_credentials():
@@ -127,3 +144,12 @@ def test_quote_raises_provider_not_available():
 def test_order_status_raises_provider_not_available():
     with pytest.raises(ProviderNotAvailable):
         IDTProvider().order_status("some-id")
+
+
+def test_providers_expose_credential_help_and_url():
+    # Each vendor carries a how-to-acquire note + a docs link the Settings UI
+    # renders beside its fields (#47).
+    for cls in (IDTProvider, TwistProvider):
+        provider = cls()
+        assert provider.credential_help.strip(), f"{cls.__name__} missing credential_help"
+        assert provider.credential_help_url.startswith("https://"), f"{cls.__name__} missing help url"

@@ -13,14 +13,29 @@ of whether live submission ever ships.
 """
 from __future__ import annotations
 
+import os
+
 import keyring
 from keyring.errors import PasswordDeleteError
 
-_SERVICE_PREFIX = "oligolia-ordering"
+_DEFAULT_SERVICE_PREFIX = "oligolia-ordering"
+
+
+def _service_prefix() -> str:
+    """Keychain namespace prefix, overridable via ``OLIGOLIA_KEYCHAIN_NAMESPACE``.
+
+    A test harness that drives this app in-process (e.g. ProjectMan's playtest
+    tool) shares this process's real OS-keychain access with no isolation, so it
+    can point at an isolated, always-empty namespace instead of touching a real
+    user's saved credentials. Read per call (not cached) so setting the env var
+    takes effect for subsequent calls; defaults to the real value, so a normal
+    installed copy of the app is unaffected.
+    """
+    return os.environ.get("OLIGOLIA_KEYCHAIN_NAMESPACE", _DEFAULT_SERVICE_PREFIX)
 
 
 def _service_name(vendor: str) -> str:
-    return f"{_SERVICE_PREFIX}:{vendor.lower()}"
+    return f"{_service_prefix()}:{vendor.lower()}"
 
 
 def save_credential(vendor: str, field: str, value: str) -> None:

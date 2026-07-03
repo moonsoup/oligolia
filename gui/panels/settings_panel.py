@@ -15,6 +15,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QLineEdit,
     QPushButton, QGroupBox, QMessageBox, QScrollArea,
@@ -55,6 +56,27 @@ class _VendorCredentials(QGroupBox):
             self._fields[field] = edit
             form.addRow(field.replace("_", " ").title() + ":", edit)
         layout.addLayout(form)
+
+        # How to obtain this vendor's key (issue #47) — a short note + a link to
+        # the vendor's own API-access docs, so a user isn't left guessing where
+        # a key comes from (neither vendor offers a self-serve key).
+        help_text = getattr(self._provider, "credential_help", "")
+        help_url = getattr(self._provider, "credential_help_url", "")
+        if help_text or help_url:
+            parts = []
+            if help_text:
+                parts.append(help_text)
+            if help_url:
+                parts.append(
+                    f'<a href="{help_url}">How to get {_vendor_label(vendor_id)} '
+                    f"API access &rarr;</a>"
+                )
+            help_label = QLabel(" ".join(parts))
+            help_label.setWordWrap(True)
+            help_label.setObjectName("subheading")
+            help_label.setOpenExternalLinks(True)
+            help_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+            layout.addWidget(help_label)
 
         btn_row = QHBoxLayout()
         btn_save = QPushButton("Save credentials")

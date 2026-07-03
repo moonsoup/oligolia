@@ -44,6 +44,11 @@ class SubmitProvider(ABC):
 
     vendor_id: str
     required_credential_fields: list[str]
+    #: Short, user-facing note on how to obtain this vendor's API access, shown
+    #: beside its credential fields in the Settings UI (issue #47).
+    credential_help: str = ""
+    #: Link to the vendor's own API-access documentation for that note.
+    credential_help_url: str = ""
 
     def test_connection(self) -> ConnectionCheck:
         present = has_credentials(self.vendor_id, self.required_credential_fields)
@@ -101,6 +106,15 @@ class IDTProvider(SubmitProvider):
 
     vendor_id = "idt"
     required_credential_fields = ["api_key"]
+    credential_help = (
+        "IDT's SciTools Plus API isn't self-serve — access is granted by booking "
+        "an integration consultation with IDT, who then provide your API "
+        "credentials. There's no public sandbox key to generate yourself."
+    )
+    credential_help_url = (
+        "https://www.idtdna.com/pages/products/gmp-oem-and-integrations/"
+        "integrations/scitools-plus-api"
+    )
 
     def quote(self, *args, **kwargs):
         return super().quote(*args, **kwargs)
@@ -120,6 +134,12 @@ class TwistProvider(SubmitProvider):
 
     vendor_id = "twist"
     required_credential_fields = ["api_token", "account_email"]
+    credential_help = (
+        "Twist's TAPI access is arranged by emailing Twist to register your "
+        "account email and a whitelisted IP address; they then issue a "
+        "one-time-use token link. Use that account email and token here."
+    )
+    credential_help_url = "https://www.twistbioscience.com/tapi"
 
     def quote(self, *args, **kwargs):
         return super().quote(*args, **kwargs)
