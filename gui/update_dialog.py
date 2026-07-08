@@ -121,7 +121,7 @@ class UpdateDialog(QDialog):
         self._status.show()
         self._status.setText(f"Downloading {filename} ({self._info.download_size_hint})…")
 
-        self._worker = DownloadWorker(url, filename)
+        self._worker = DownloadWorker(url, filename, self._info.expected_sha256)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_downloaded)
         self._worker.error.connect(self._on_error)

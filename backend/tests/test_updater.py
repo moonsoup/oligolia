@@ -410,6 +410,203 @@ def test_apply_code_patch_path_traversal_blocked():
             evil.unlink()
 
 
+# ── DownloadWorker integrity (partial-patch bug) ─────────────────────────────
+
+def _make_stream_resp(content_length, chunks):
+    """Build a mock httpx streaming response usable as a context manager."""
+    mock_resp = MagicMock()
+    mock_resp.headers = ({"content-length": str(content_length)}
+                         if content_length is not None else {})
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.iter_bytes.return_value = list(chunks)
+    mock_resp.__enter__ = lambda s: s
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    return mock_resp
+
+
+def _run_worker(url, filename, resp, tmp_path, expected_sha256=""):
+    """Run a DownloadWorker against a mocked stream, writing into tmp_path.
+
+    Returns (finished_paths, errors).
+    """
+    from gui.updater import DownloadWorker
+
+    worker = DownloadWorker(url, filename, expected_sha256)
+    finished, errors = [], []
+    worker.progress = MagicMock()
+    worker.progress.emit = lambda v: None
+    worker.finished = MagicMock()
+    worker.finished.emit = lambda p: finished.append(p)
+    worker.error = MagicMock()
+    worker.error.emit = lambda e: errors.append(e)
+
+    with patch("tempfile.gettempdir", return_value=str(tmp_path)), \
+         patch("httpx.Client") as mock_client_cls:
+        client_instance = MagicMock()
+        mock_client_cls.return_value.__enter__.return_value = client_instance
+        client_instance.stream.return_value = resp
+        worker.run()
+    return finished, errors
+
+
+def test_download_worker_truncated_download_is_rejected(tmp_path):
+    """A stream that ends short of Content-Length must NOT be reported as finished.
+
+    Reproduces the 'partial patch' bug: the server promised 1000 bytes but the
+    connection dropped after 400. The old code emitted finished() with the
+    truncated file, which apply_code_patch then wrote over the live binary.
+    """
+    resp = _make_stream_resp(content_length=1000, chunks=[b"A" * 400])
+    finished, errors = _run_worker("http://x/patch.tar.gz", "patch.tar.gz", resp, tmp_path)
+
+    assert finished == [], "truncated download must not be reported as a completed file"
+    assert len(errors) == 1
+    # And the partial file must not be left lying around for a later apply
+    assert not (tmp_path / "patch.tar.gz").exists(), "partial file should be cleaned up"
+
+
+def test_download_worker_complete_download_succeeds(tmp_path):
+    """A stream matching Content-Length is accepted and written intact."""
+    resp = _make_stream_resp(content_length=1000, chunks=[b"A" * 500, b"A" * 500])
+    finished, errors = _run_worker("http://x/patch.tar.gz", "patch.tar.gz", resp, tmp_path)
+
+    assert errors == []
+    assert finished == [str(tmp_path / "patch.tar.gz")]
+    assert (tmp_path / "patch.tar.gz").read_bytes() == b"A" * 1000
+
+
+def test_download_worker_checksum_mismatch_is_rejected(tmp_path):
+    """A fully-downloaded but corrupt file (bad checksum) must be rejected.
+
+    Content-Length can be satisfied by a complete-but-corrupted body, or absent
+    entirely; the manifest sha256 is the backstop that still catches it.
+    """
+    payload = b"corrupted patch bytes"
+    resp = _make_stream_resp(content_length=len(payload), chunks=[payload])
+    finished, errors = _run_worker(
+        "http://x/patch.tar.gz", "patch.tar.gz", resp, tmp_path,
+        expected_sha256="00" * 32,  # deliberately wrong
+    )
+
+    assert finished == []
+    assert len(errors) == 1 and "Checksum mismatch" in errors[0]
+    assert not (tmp_path / "patch.tar.gz").exists()
+
+
+def test_download_worker_checksum_match_succeeds(tmp_path):
+    """A download whose sha256 matches the manifest is accepted."""
+    import hashlib
+    payload = b"the genuine patch bytes"
+    digest = hashlib.sha256(payload).hexdigest()
+    resp = _make_stream_resp(content_length=len(payload), chunks=[payload])
+    finished, errors = _run_worker(
+        "http://x/patch.tar.gz", "patch.tar.gz", resp, tmp_path,
+        expected_sha256=digest,
+    )
+
+    assert errors == []
+    assert finished == [str(tmp_path / "patch.tar.gz")]
+
+
+# ── UpdateInfo.expected_sha256 ───────────────────────────────────────────────
+
+def test_expected_sha256_returned_for_patch():
+    info = make_info("0.4.0", patch_url="http://x/patch.tar.gz", min_compat="0.0.0")
+    info.patch_sha256 = "abc123"
+    assert info.can_patch is True
+    assert info.expected_sha256 == "abc123"
+
+
+def test_expected_sha256_empty_for_full_install():
+    # Not patch-eligible → no checksum is applied to the full installer download
+    info = make_info("0.4.0", patch_url="", full_url="http://x/full.dmg")
+    info.patch_sha256 = "abc123"
+    assert info.can_patch is False
+    assert info.expected_sha256 == ""
+
+
+# ── apply_code_patch atomicity (breaks-the-app bug) ──────────────────────────
+
+def test_apply_code_patch_rolls_back_live_files_on_failure(tmp_path):
+    """A failure partway through applying a patch must not leave the installed
+    binary modified — otherwise a bad patch bricks the app.
+
+    We feed an archive whose first member is a valid replacement for the main
+    executable and whose second member is a path-traversal attack that aborts
+    the apply. The live executable must be unchanged afterwards.
+    """
+    fake_app = tmp_path / "Oligolia.app"
+    exe = fake_app / "Contents" / "MacOS" / "Oligolia"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"OLD-WORKING-BINARY")
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        good = tarfile.TarInfo(name="Contents/MacOS/Oligolia")
+        good_data = b"NEW-BINARY"
+        good.size = len(good_data)
+        tar.addfile(good, io.BytesIO(good_data))
+        evil = tarfile.TarInfo(name="../../evil.txt")
+        evil_data = b"pwned"
+        evil.size = len(evil_data)
+        tar.addfile(evil, io.BytesIO(evil_data))
+    buf.seek(0)
+    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as f:
+        f.write(buf.read())
+        patch_path = f.name
+
+    try:
+        with patch("gui.updater._app_bundle_path", return_value=fake_app), \
+             patch("subprocess.run"):
+            with pytest.raises(RuntimeError, match="unsafe path"):
+                apply_code_patch(patch_path)
+
+        assert exe.read_bytes() == b"OLD-WORKING-BINARY", \
+            "live executable was clobbered before the patch was validated"
+    finally:
+        os.unlink(patch_path)
+
+
+def test_apply_code_patch_success_swaps_files_and_cleans_up(tmp_path):
+    """A valid patch replaces the targeted files, preserves the exec bit on the
+    main binary, and leaves no .oligolia-bak backups behind."""
+    fake_app = tmp_path / "Oligolia.app"
+    exe = fake_app / "Contents" / "MacOS" / "Oligolia"
+    ver = fake_app / "Contents" / "Resources" / "version.py"
+    exe.parent.mkdir(parents=True)
+    ver.parent.mkdir(parents=True)
+    exe.write_bytes(b"OLD-BINARY")
+    ver.write_text("VERSION = '1.0.0'\n")
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, data in [
+            ("Contents/MacOS/Oligolia", b"NEW-BINARY-CONTENT"),
+            ("Contents/Resources/version.py", b"VERSION = '2.0.0'\n"),
+        ]:
+            ti = tarfile.TarInfo(name=name)
+            ti.size = len(data)
+            tar.addfile(ti, io.BytesIO(data))
+    buf.seek(0)
+    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as f:
+        f.write(buf.read())
+        patch_path = f.name
+
+    try:
+        with patch("gui.updater._app_bundle_path", return_value=fake_app), \
+             patch("subprocess.run") as mock_run:
+            apply_code_patch(patch_path)
+
+        assert exe.read_bytes() == b"NEW-BINARY-CONTENT"
+        assert ver.read_text() == "VERSION = '2.0.0'\n"
+        assert os.access(exe, os.X_OK), "main binary should keep its executable bit"
+        assert not (exe.parent / "Oligolia.oligolia-bak").exists(), "backup not cleaned up"
+        # codesign should run once the swap is clean (remove-signature + re-sign)
+        assert mock_run.call_count == 2
+    finally:
+        os.unlink(patch_path)
+
+
 # ── restart_app ───────────────────────────────────────────────────────────────
 
 def test_restart_app_calls_execv():
