@@ -22,6 +22,7 @@ Defaults:
 import sys
 import tarfile
 import json
+import hashlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -83,11 +84,21 @@ def make_patch() -> None:
     patch_size = patch_path.stat().st_size
     print(f"\nPatch size:  {patch_size / 1024 / 1024:.1f} MB")
 
+    # Checksum the finished patch so the updater can reject a corrupt/truncated
+    # download before applying it.
+    hasher = hashlib.sha256()
+    with open(patch_path, "rb") as f:
+        for block in iter(lambda: f.read(1024 * 1024), b""):
+            hasher.update(block)
+    patch_sha256 = hasher.hexdigest()
+    print(f"SHA-256:     {patch_sha256}")
+
     # Generate manifest
     manifest = {
         "version": VERSION,
         "requires_full": False,
         "min_compatible_base": "0.3.0",  # oldest version this patch applies to
+        "patch_sha256": patch_sha256,
         "changelog": f"Oligolia {VERSION}",
         "assets": {
             "darwin_patch": patch_name,

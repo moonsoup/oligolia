@@ -28,6 +28,7 @@ import tempfile
 import subprocess
 import tarfile
 import shutil
+import hashlib
 import logging
 from pathlib import Path
 
@@ -89,7 +90,7 @@ def _platform_full_asset(version: str) -> str:
 class UpdateInfo:
     def __init__(self, version: str, body: str, html_url: str,
                  patch_url: str, full_url: str, requires_full: bool,
-                 min_compatible_base: str) -> None:
+                 min_compatible_base: str, patch_sha256: str = "") -> None:
         self.version = version
         self.body = body
         self.html_url = html_url
@@ -97,6 +98,7 @@ class UpdateInfo:
         self.full_url = full_url
         self.requires_full = requires_full
         self.min_compatible_base = min_compatible_base
+        self.patch_sha256 = patch_sha256    # empty string = no integrity check
 
     @property
     def is_newer(self) -> bool:
@@ -122,6 +124,16 @@ class UpdateInfo:
     @property
     def download_size_hint(self) -> str:
         return "~11 MB (code patch)" if self.can_patch else "~260 MB (full installer)"
+
+    @property
+    def expected_sha256(self) -> str:
+        """Checksum to verify the chosen download against, if the manifest gave one.
+
+        Only the patch is checksummed here — the manifest is produced alongside
+        the patch (scripts/make_patch.py), whereas the full installer is built
+        separately by CI and carries its own OS-level integrity.
+        """
+        return self.patch_sha256 if self.can_patch else ""
 
 
 class UpdateChecker(QThread):
@@ -159,6 +171,7 @@ class UpdateChecker(QThread):
             manifest_url = assets.get(manifest_name, "")
             requires_full = False
             min_compat = "0.0.0"
+            patch_sha256 = ""
             patch_name = _platform_patch_asset(tag)
             full_name = _platform_full_asset(tag)
             _log.info("Looking for manifest: %s  found=%s", manifest_name, bool(manifest_url))
@@ -170,13 +183,14 @@ class UpdateChecker(QThread):
                     manifest = mresp.json()
                     requires_full = manifest.get("requires_full", False)
                     min_compat = manifest.get("min_compatible_base", "0.0.0")
+                    patch_sha256 = manifest.get("patch_sha256", "")
                     m_assets = manifest.get("assets", {})
                     if "darwin_patch" in m_assets and platform.system() == "Darwin":
                         patch_name = m_assets["darwin_patch"]
                     if "darwin_full" in m_assets and platform.system() == "Darwin":
                         full_name = m_assets["darwin_full"]
-                    _log.info("Manifest: requires_full=%s min_compat=%s patch_name=%s",
-                              requires_full, min_compat, patch_name)
+                    _log.info("Manifest: requires_full=%s min_compat=%s patch_name=%s sha256=%s",
+                              requires_full, min_compat, patch_name, patch_sha256[:12] or "(none)")
                 except Exception as e:
                     _log.warning("Manifest fetch failed: %s", e)
 
@@ -189,6 +203,7 @@ class UpdateChecker(QThread):
                 version=tag, body=body, html_url=html_url,
                 patch_url=patch_url, full_url=full_url,
                 requires_full=requires_full, min_compatible_base=min_compat,
+                patch_sha256=patch_sha256,
             )
             _log.info("is_newer=%s can_patch=%s download_url=%s",
                       info.is_newer, info.can_patch, info.download_url)
@@ -206,30 +221,55 @@ class DownloadWorker(QThread):
     finished = pyqtSignal(str)   # local file path
     error = pyqtSignal(str)
 
-    def __init__(self, url: str, filename: str) -> None:
+    def __init__(self, url: str, filename: str, expected_sha256: str = "") -> None:
         super().__init__()
         self._url = url
         self._filename = filename
+        self._expected_sha256 = (expected_sha256 or "").lower()
 
     def run(self) -> None:
+        dest = os.path.join(tempfile.gettempdir(), self._filename)
         try:
-            dest = os.path.join(tempfile.gettempdir(), self._filename)
             with httpx.Client(timeout=300, follow_redirects=True) as client:
                 with client.stream("GET", self._url) as r:
                     r.raise_for_status()
                     total = int(r.headers.get("content-length", 0))
                     downloaded = 0
+                    hasher = hashlib.sha256()
                     if not total:
                         # Signal indeterminate mode — dialog will pulse the bar
                         self.progress.emit(-1)
                     with open(dest, "wb") as f:
                         for chunk in r.iter_bytes(chunk_size=65536):
                             f.write(chunk)
+                            hasher.update(chunk)
                             downloaded += len(chunk)
                             if total:
                                 self.progress.emit(int(downloaded / total * 100))
+
+            # A dropped connection can end iter_bytes() without raising, leaving a
+            # truncated file. Refuse to hand a partial download to the patcher —
+            # otherwise it would overwrite the live app with an incomplete binary.
+            if total and downloaded != total:
+                raise RuntimeError(
+                    f"Incomplete download: received {downloaded} of {total} bytes"
+                )
+            if self._expected_sha256:
+                actual = hasher.hexdigest()
+                if actual != self._expected_sha256:
+                    raise RuntimeError(
+                        "Checksum mismatch — download is corrupt "
+                        f"(expected {self._expected_sha256[:12]}…, got {actual[:12]}…)"
+                    )
+
             self.finished.emit(dest)
         except Exception as e:
+            # Never leave a partial/corrupt file behind for the patcher to find
+            try:
+                if os.path.exists(dest):
+                    os.remove(dest)
+            except OSError:
+                pass
             self.error.emit(str(e))
 
 
@@ -241,26 +281,85 @@ def apply_code_patch(patch_path: str) -> None:
       Contents/MacOS/Oligolia        ← replace the main executable
       Contents/Resources/version.py  ← update version number
       Contents/Info.plist            ← update plist version strings
+
+    Two-phase, all-or-nothing apply so a bad patch can never brick the install:
+      1. Extract the ENTIRE archive to a staging dir. A truncated/corrupt tar.gz
+         raises here (bad gzip CRC / unexpected EOF) before the live bundle is
+         touched at all.
+      2. Back up each target, copy the staged files in, and roll every change
+         back on any failure — the running app is never left half-patched.
     """
     app = _app_bundle_path()
     if not app:
         raise RuntimeError("Cannot locate .app bundle — are you running from the installed app?")
+    app_root = str(app.resolve())
 
-    with tarfile.open(patch_path, "r:gz") as tar:
-        for member in tar.getmembers():
-            # Resolve destination and reject any path that escapes the .app bundle
-            dest = (app / member.name).resolve()
-            if not str(dest).startswith(str(app.resolve())):
-                raise RuntimeError(
-                    f"Patch contains unsafe path '{member.name}' — aborting"
-                )
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            if member.isfile():
-                with tar.extractfile(member) as src, open(dest, "wb") as dst:
+    staging = Path(tempfile.mkdtemp(prefix="oligolia_patch_"))
+    staging_root = str(staging.resolve())
+    try:
+        # ── Phase 1: extract + validate the whole archive into staging ──────────
+        members: list[str] = []
+        with tarfile.open(patch_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if not (member.isfile() or member.isdir()):
+                    continue  # skip symlinks/devices — patches only carry files
+                # Reject any path that escapes the .app bundle (or the staging dir)
+                if not str((app / member.name).resolve()).startswith(app_root):
+                    raise RuntimeError(
+                        f"Patch contains unsafe path '{member.name}' — aborting"
+                    )
+                staged = (staging / member.name).resolve()
+                if not str(staged).startswith(staging_root):
+                    raise RuntimeError(
+                        f"Patch contains unsafe path '{member.name}' — aborting"
+                    )
+                if member.isdir():
+                    staged.mkdir(parents=True, exist_ok=True)
+                    continue
+                staged.parent.mkdir(parents=True, exist_ok=True)
+                with tar.extractfile(member) as src, open(staged, "wb") as dst:
                     shutil.copyfileobj(src, dst)
+                members.append(member.name)
+
+        if not members:
+            raise RuntimeError("Patch contains no files — refusing to apply")
+
+        # ── Phase 2: swap staged files in, with backup + rollback ───────────────
+        backups: list[tuple[Path, Path | None]] = []  # (target, backup | None if new)
+        try:
+            for name in members:
+                target = (app / name).resolve()
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.exists():
+                    bak = target.with_name(target.name + ".oligolia-bak")
+                    shutil.copy2(target, bak)
+                    backups.append((target, bak))
+                else:
+                    backups.append((target, None))
+                shutil.copyfile(staging / name, target)
                 # Preserve executable bit for the main binary
-                if "MacOS/" in member.name:
-                    os.chmod(dest, 0o755)
+                if "MacOS/" in name:
+                    os.chmod(target, 0o755)
+        except Exception:
+            # Restore every file we changed, newest change first
+            for target, bak in reversed(backups):
+                try:
+                    if bak is not None:
+                        shutil.copyfile(bak, target)
+                    elif target.exists():
+                        target.unlink()
+                except OSError:
+                    pass
+            raise
+        finally:
+            for _, bak in backups:
+                if bak is not None:
+                    try:
+                        bak.unlink()
+                    except OSError:
+                        pass
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
     # Clear code signature — patched binary won't match original sig
     subprocess.run(["codesign", "--remove-signature", str(app)],
