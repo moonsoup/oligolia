@@ -16,7 +16,7 @@ from .styles import DARK_STYLESHEET
 from .panels import (
     SequencePanel, SearchPanel, CRISPRPanel,
     AlignmentPanel, PrimersPanel, VariantsPanel, PathwaysPanel, WorkflowPanel,
-    SettingsPanel,
+    SettingsPanel, StructurePanel,
 )
 from .updater import UpdateChecker
 from .update_dialog import UpdateDialog
@@ -121,6 +121,7 @@ class MainWindow(QMainWindow):
         self._pathways_panel = PathwaysPanel()
         self._workflow_panel = WorkflowPanel()
         self._settings_panel = SettingsPanel()
+        self._structure_panel = StructurePanel()
 
         # Connect cross-panel signals
         self._seq_panel.sequence_selected.connect(self._on_seq_selected)
@@ -140,6 +141,7 @@ class MainWindow(QMainWindow):
         _add(self._variants_panel, "🔬", "Variants")
         _add(self._pathways_panel, "🗺️", "Pathways")
         _add(self._workflow_panel, "⛓", "Workflow")
+        _add(self._structure_panel, "🧪", "Structure")
         _add(self._settings_panel, "⚙", "Settings")
 
         layout.addWidget(self._tabs)
@@ -159,6 +161,9 @@ class MainWindow(QMainWindow):
             self._crispr_panel.set_target(seq.seq)
             self._primers_panel.set_template(seq.seq, seq.is_circular)
             self._workflow_panel.set_sequence(seq.seq)
+        elif seq.molecule_type.value == "PROTEIN":
+            uniprot_id = seq.accession if seq.source_db == "uniprot" else None
+            self._structure_panel.set_target(seq.seq, uniprot_id=uniprot_id)
 
     # ── Menu actions ──────────────────────────────────────────────────────────
 
