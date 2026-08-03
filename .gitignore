@@ -29,3 +29,6 @@ build/work/
 
 # playtest human-mode recordings (lib/qt_recording.py, specialties/genetics.py)
 videos/
+
+# spindlebox index (local artifact, rebuilt by `spindlebox index`)
+.spi/
