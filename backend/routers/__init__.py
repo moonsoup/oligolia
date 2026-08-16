@@ -8,10 +8,11 @@ from .primers import router as primers_router
 from .pathways import router as pathways_router
 from .analysis import router as analysis_router
 from .cloning import router as cloning_router
+from .structure import router as structure_router
 
 __all__ = [
     "sequences_router", "databases_router", "files_router",
     "alignment_router", "crispr_router", "variants_router",
     "primers_router", "pathways_router", "analysis_router",
-    "cloning_router",
+    "cloning_router", "structure_router",
 ]

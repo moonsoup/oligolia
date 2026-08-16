@@ -7,9 +7,10 @@ from .variants_panel import VariantsPanel
 from .pathways_panel import PathwaysPanel
 from .workflow_panel import WorkflowPanel
 from .settings_panel import SettingsPanel
+from .structure_panel import StructurePanel
 
 __all__ = [
     "SequencePanel", "SearchPanel", "CRISPRPanel",
     "AlignmentPanel", "PrimersPanel", "VariantsPanel", "PathwaysPanel",
-    "WorkflowPanel", "SettingsPanel",
+    "WorkflowPanel", "SettingsPanel", "StructurePanel",
 ]

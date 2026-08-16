@@ -278,6 +278,7 @@ class SearchPanel(QWidget):
                 id=acc, name=result.get("name", acc),
                 description=result.get("description", ""),
                 seq=seq_str.upper(), molecule_type=MoleculeType.PROTEIN, accession=acc,
+                source_db="uniprot",
             )
         raise ValueError(f"Cannot fetch sequence for database '{db}'")
 

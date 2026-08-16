@@ -79,6 +79,33 @@ NCBI/Ensembl) → `runner.py` (drives the live backend, `python run_backend.py` 
 running) → `analyst.py` (diffs expected vs actual, traces failures to file:line) →
 `reporter.py` (files deduped GitHub issues).
 
+## Structure Prediction + Optional 3D Viewer Companion App
+
+`gui/panels/structure_panel.py` looks up/predicts protein structures in three tiers
+(`backend/routers/structure.py`): (1) real experimental structure from RCSB PDB, (2)
+precomputed AlphaFold DB prediction by UniProt accession (free, keyless, no length cap),
+(3) ESMFold live-fold as a last resort for sequences with no UniProt match. A companion
+heuristic (`backend/services/interaction_points.py`, uses Biopython's `Bio.PDB.SASA`)
+flags surface-exposed charged/polar residues as "putative interaction points" — explicitly
+a charge/exposure heuristic, not a validated binding-site or docking prediction.
+
+The core app has **no 3D rendering and no `PyQt6-WebEngine` dependency** — that would bundle
+a Chromium runtime into every user's download. Instead, `structure_viewer/` is a fully
+separate, optional companion app (its own `main.py`, `version.py`, PyInstaller spec, and
+`.github/workflows/structure-viewer-release.yml`) that the user downloads and installs
+independently; the core app's "Open in 3D Viewer" button (`gui/plugins/
+structure_viewer_launcher.py`) detects it and hands off via subprocess, or offers a download
+link if it isn't installed. **Its version/release cadence is independent of rule 3 above** —
+bump `structure_viewer/version.py` and push a `structview-vX.Y.Z` tag only when the viewer
+itself changes; do not couple it to ordinary oligolia patch bumps, which would trigger a
+wasteful full Chromium-bundled rebuild for no reason.
+
+```bash
+pip install PyQt6-WebEngine   # only needed to run/build structure_viewer/, not the core app
+python structure_viewer/main.py --pdb some.pdb --interactions some.json  # local test run
+pyinstaller structure_viewer/oligolia_structure_viewer.spec              # local build
+```
+
 ## Synthesis Vendor Export
 
 `backend/formats/synthesis_order.py` generates vendor-formatted order files (GENEWIZ xlsx,

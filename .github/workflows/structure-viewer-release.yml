@@ -1,0 +1,259 @@
+name: Build & Release Structure Viewer
+
+on:
+  push:
+    tags:
+      - 'structview-v[0-9]+.[0-9]+.[0-9]+'   # separate tag prefix — never fires on ordinary oligolia release tags
+  workflow_dispatch:
+
+jobs:
+
+  # ── macOS DMG ──────────────────────────────────────────────────────────────
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install --quiet --upgrade pip
+          backend/.venv/bin/pip install --quiet \
+            PyInstaller pyinstaller-hooks-contrib \
+            PyQt6 PyQt6-WebEngine Pillow
+
+      - name: Read version
+        id: ver
+        run: echo "version=$(python -c "exec(open('structure_viewer/version.py').read()); print(VERSION)")" >> "$GITHUB_OUTPUT"
+
+      - name: Generate icons
+        run: backend/.venv/bin/python assets/make_icon.py
+
+      - name: Build .app
+        run: |
+          backend/.venv/bin/pyinstaller structure_viewer/oligolia_structure_viewer.spec \
+            --distpath dist \
+            --workpath build/work \
+            --noconfirm --clean
+
+      - name: Create DMG
+        run: |
+          VERSION=${{ steps.ver.outputs.version }}
+          TMP=$(mktemp -d)/dmg_src
+          mkdir -p "$TMP"
+          cp -R "dist/Oligolia Structure Viewer.app" "$TMP/"
+          ln -s /Applications "$TMP/Applications"
+          for attempt in 1 2 3; do
+            sleep $((attempt * 2))
+            hdiutil create \
+              -volname "Oligolia Structure Viewer $VERSION" \
+              -srcfolder "$TMP" \
+              -ov -format UDZO -imagekey zlib-level=9 \
+              "dist/OligoliaStructureViewer-mac.dmg" && break
+            echo "hdiutil attempt $attempt failed, retrying..."
+            [ $attempt -eq 3 ] && exit 1
+          done
+          cp "dist/OligoliaStructureViewer-mac.dmg" "dist/OligoliaStructureViewer-$VERSION-mac.dmg"
+          rm -rf "$(dirname "$TMP")"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: structview-mac-artifacts
+          path: |
+            dist/OligoliaStructureViewer-mac.dmg
+            dist/OligoliaStructureViewer-*-mac.dmg
+
+  # ── Windows Setup.exe ──────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m venv backend\.venv
+          backend\.venv\Scripts\pip install --quiet --upgrade pip
+          backend\.venv\Scripts\pip install --quiet `
+            PyInstaller pyinstaller-hooks-contrib `
+            PyQt6 PyQt6-WebEngine Pillow
+
+      - name: Read version
+        id: ver
+        run: |
+          $v = python -c "exec(open('structure_viewer/version.py').read()); print(VERSION)"
+          echo "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      - name: Generate icons
+        run: backend\.venv\Scripts\python assets\make_icon.py
+
+      - name: Build .exe
+        run: |
+          backend\.venv\Scripts\pyinstaller structure_viewer\oligolia_structure_viewer.spec `
+            --distpath dist `
+            --workpath build\work `
+            --noconfirm --clean
+
+      - name: Update Inno Setup version
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          $iss = Get-Content structure_viewer\inno_setup.iss -Raw
+          $iss = $iss -replace '#define MyAppVersion "[^"]*"', "#define MyAppVersion `"$v`""
+          $iss = $iss -replace 'OutputBaseFilename=[^\r\n]*', "OutputBaseFilename=OligoliaStructureViewer-$v-Setup"
+          Set-Content structure_viewer\inno_setup.iss $iss
+
+      - name: Create installer
+        run: |
+          iscc /O"dist" structure_viewer\inno_setup.iss
+
+      - name: Stage installer
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          Copy-Item "dist\OligoliaStructureViewer-$v-Setup.exe" "dist\OligoliaStructureViewer-Setup.exe"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: structview-windows-artifacts
+          path: |
+            dist\OligoliaStructureViewer-Setup.exe
+            dist\OligoliaStructureViewer-*-Setup.exe
+
+  # ── Linux AppImage ─────────────────────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 libglib2.0-0 libdbus-1-3 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 \
+            libxkbcommon-x11-0 libfuse2 \
+            libnss3 libxcomposite1 libxrandr2 libxdamage1 libgbm1 libasound2
+
+      - name: Install Python dependencies
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install --quiet --upgrade pip
+          backend/.venv/bin/pip install --quiet \
+            PyInstaller pyinstaller-hooks-contrib \
+            PyQt6 PyQt6-WebEngine Pillow
+
+      - name: Read version
+        id: ver
+        run: echo "version=$(python -c "exec(open('structure_viewer/version.py').read()); print(VERSION)")" >> "$GITHUB_OUTPUT"
+
+      - name: Download appimagetool
+        run: |
+          curl -fsSL -o /usr/local/bin/appimagetool \
+            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x /usr/local/bin/appimagetool
+
+      - name: Generate icons
+        run: backend/.venv/bin/python assets/make_icon.py
+
+      - name: Build executable
+        run: |
+          backend/.venv/bin/pyinstaller structure_viewer/oligolia_structure_viewer.spec \
+            --distpath dist \
+            --workpath build/work \
+            --noconfirm --clean
+
+      - name: Create AppImage
+        run: |
+          VERSION=${{ steps.ver.outputs.version }}
+          APP="Oligolia Structure Viewer"
+
+          cat > "dist/$APP/oligolia-structure-viewer.desktop" <<EOF
+          [Desktop Entry]
+          Name=Oligolia Structure Viewer
+          Comment=Optional 3D structure viewer companion for Oligolia
+          Exec=Oligolia Structure Viewer %f
+          Icon=oligolia-structure-viewer
+          Terminal=false
+          Type=Application
+          Categories=Science;Biology;Education;
+          EOF
+
+          cp assets/icon.png "dist/$APP/oligolia-structure-viewer.png"
+
+          APPDIR="build/work/StructureViewer.AppDir"
+          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" \
+                   "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+          cp -r "dist/$APP/"* "$APPDIR/usr/bin/"
+          cp "dist/$APP/oligolia-structure-viewer.desktop" "$APPDIR/usr/share/applications/"
+          cp assets/icon.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/oligolia-structure-viewer.png"
+          cp assets/icon.png "$APPDIR/oligolia-structure-viewer.png"
+          cp "dist/$APP/oligolia-structure-viewer.desktop" "$APPDIR/"
+
+          ARCH=x86_64 appimagetool "$APPDIR" "dist/Oligolia-Structure-Viewer.AppImage"
+          cp "dist/Oligolia-Structure-Viewer.AppImage" "dist/Oligolia-Structure-Viewer-$VERSION.AppImage"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: structview-linux-artifacts
+          path: |
+            dist/Oligolia-Structure-Viewer.AppImage
+            dist/Oligolia-Structure-Viewer-*.AppImage
+
+  # ── Create GitHub Release ──────────────────────────────────────────────────
+  release:
+    needs: [build-mac, build-windows, build-linux]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: ver
+        run: echo "version=$(python -c "exec(open('structure_viewer/version.py').read()); print(VERSION)")" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=${{ steps.ver.outputs.version }}
+          TAG=${{ github.ref_name }}
+
+          gh release delete "$TAG" --repo moonsoup/oligolia --yes 2>/dev/null || true
+
+          gh release create "$TAG" \
+            --title "Oligolia Structure Viewer $VERSION" \
+            --notes "Optional companion app for Oligolia's Structure panel — adds an interactive 3D viewer. Not required to use Oligolia itself." \
+            release-assets/OligoliaStructureViewer-mac.dmg \
+            release-assets/OligoliaStructureViewer-Setup.exe \
+            release-assets/Oligolia-Structure-Viewer.AppImage \
+            release-assets/OligoliaStructureViewer-$VERSION-mac.dmg \
+            release-assets/OligoliaStructureViewer-$VERSION-Setup.exe \
+            release-assets/Oligolia-Structure-Viewer-$VERSION.AppImage
