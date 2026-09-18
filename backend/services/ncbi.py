@@ -1,6 +1,10 @@
 """NCBI Entrez E-utilities + Datasets v2 REST API client."""
 
 import time
+import io
+import json
+import re
+import zipfile
 import httpx
 from typing import Any
 
@@ -16,6 +20,100 @@ def _throttle() -> None:
     if elapsed < 0.34:
         time.sleep(0.34 - elapsed)
     _last_request = time.monotonic()
+
+
+class BlastFailed(RuntimeError):
+    """A BLAST search that cannot produce a result, with the reason."""
+
+
+def parse_blast_rid(text: str) -> str | None:
+    """The RID from a PUT response's QBlastInfo block.
+
+    The old parser required the literal prefix `"    RID = "` — exactly four
+    spaces — so any change in NCBI's spacing silently produced "no RID".
+    """
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("RID"):
+            _, _, value = stripped.partition("=")
+            rid = value.strip()
+            if rid:
+                return rid
+    return None
+
+
+def parse_blast_status(text: str) -> str:
+    """WAITING | READY | FAILED | UNKNOWN, from the QBlastInfo block only.
+
+    The old code tested `"Status=READY" in status_r.text` against the whole body.
+    That is wrong twice over: the body for a JSON2 request is zip bytes, in which
+    the substring never appears, and for a text body any hit description
+    containing the phrase would satisfy it.
+
+    Anything not positively understood is UNKNOWN, never READY — defaulting the
+    other way is how a zipped payload looked like a finished search (#68).
+    """
+    inside = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped == "QBlastInfoBegin":
+            inside = True
+            continue
+        if stripped == "QBlastInfoEnd":
+            break
+        if inside and stripped.startswith("Status"):
+            _, _, value = stripped.partition("=")
+            status = value.strip().upper()
+            if status in ("WAITING", "READY", "FAILED", "UNKNOWN"):
+                return status
+    return "UNKNOWN"
+
+
+def unpack_blast_json2(content: bytes) -> dict:
+    """The BLAST report out of a JSON2 payload.
+
+    NCBI returns JSON2 as a **zip archive** — Biopython asserts the `PK\x03\x04`
+    header for exactly this case (Bio/Blast/__init__.py:1265). The archive holds a
+    top-level `<RID>.json` index whose `BlastJSON` entries point at numbered
+    `<RID>_1.json` reports.
+
+    Plain JSON is still accepted, in case NCBI ever serves it unzipped. Anything
+    that is neither raises rather than being guessed at — an HTML error page used
+    to be scanned for a `{` and parsed from there.
+    """
+    if not content:
+        raise BlastFailed("BLAST returned an empty response")
+
+    if content.startswith(b"PK\x03\x04"):
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                names = [n for n in zf.namelist() if n.lower().endswith(".json")]
+                if not names:
+                    raise BlastFailed(
+                        f"BLAST returned a zip with no JSON member: {zf.namelist()}"
+                    )
+
+                # Prefer a numbered report; the bare <RID>.json is just an index.
+                reports = sorted(n for n in names if re.search(r"_\d+\.json$", n))
+                for name in reports or sorted(names):
+                    payload = json.loads(zf.read(name))
+                    if isinstance(payload, dict) and "BlastJSON" in payload:
+                        continue  # the index, not a report
+                    return payload
+                raise BlastFailed("BLAST zip contained only an index, no report")
+        except zipfile.BadZipFile as e:
+            raise BlastFailed(f"BLAST returned a corrupt zip: {e}") from None
+
+    try:
+        payload = json.loads(content)
+    except ValueError:
+        head = content[:120].decode("utf-8", "replace")
+        raise BlastFailed(
+            f"BLAST returned neither a zip nor JSON; response began: {head!r}"
+        ) from None
+    if not isinstance(payload, dict):
+        raise BlastFailed(f"BLAST returned JSON that is not an object: {type(payload).__name__}")
+    return payload
 
 
 class NCBIClient:
@@ -118,11 +216,28 @@ class NCBIClient:
     def fetch_fasta(self, accession: str, db: str = "nucleotide") -> str:
         return self.efetch(db, [accession], rettype="fasta", retmode="text")
 
+    #: Seconds between status polls, and how many to make. NCBI asks callers not
+    #: to poll more often than every 10 s for a search of any size.
+    BLAST_POLL_SECONDS = 10
+    BLAST_MAX_POLLS = 30
+
     def blast_search(self, sequence: str, program: str = "blastn", database: str = "nt", max_hits: int = 10) -> dict:
-        """Submit a BLAST search via NCBI BLAST REST API and poll for results."""
-        put_url = "https://blast.ncbi.nlm.nih.gov/blast/Blast.cgi"
+        """Submit a BLAST search and return the JSON2 report.
+
+        Follows NCBI's documented two-step pattern, which the previous version
+        conflated (#68):
+
+        1. poll `CMD=Get&FORMAT_OBJECT=SearchInfo`, a small TEXT response whose
+           QBlastInfo block carries Status=WAITING|READY|FAILED;
+        2. only once READY, fetch `FORMAT_TYPE=JSON2` and unzip it.
+
+        Before, the status check was `"Status=READY" in body` against a body that
+        was a zip archive, so the substring never matched and every search burned
+        the full poll budget before raising TimeoutError.
+        """
+        url = "https://blast.ncbi.nlm.nih.gov/blast/Blast.cgi"
         with httpx.Client(timeout=60) as client:
-            r = client.post(put_url, data={
+            r = client.post(url, data={
                 "CMD": "Put",
                 "PROGRAM": program,
                 "DATABASE": database,
@@ -131,33 +246,39 @@ class NCBIClient:
                 "HITLIST_SIZE": max_hits,
             })
             r.raise_for_status()
-            # Extract RID
-            rid = None
-            for line in r.text.splitlines():
-                if line.startswith("    RID = "):
-                    rid = line.split("=")[1].strip()
-                    break
-            if not rid:
-                raise ValueError("BLAST: could not obtain RID from PUT response")
 
-            # Poll for results
-            for _ in range(30):
-                time.sleep(5)
-                status_r = client.get(put_url, params={"CMD": "Get", "RID": rid, "FORMAT_TYPE": "JSON2"})
-                if "Status=WAITING" in status_r.text:
+            rid = parse_blast_rid(r.text)
+            if not rid:
+                raise BlastFailed(
+                    "BLAST did not return an RID; response began: "
+                    f"{r.text[:200]!r}"
+                )
+
+            for _ in range(self.BLAST_MAX_POLLS):
+                time.sleep(self.BLAST_POLL_SECONDS)
+                info = client.get(url, params={
+                    "CMD": "Get", "RID": rid, "FORMAT_OBJECT": "SearchInfo",
+                })
+                status = parse_blast_status(info.text)
+                if status == "WAITING":
                     continue
-                if "Status=READY" in status_r.text or status_r.headers.get("content-type", "").startswith("application/json"):
-                    try:
-                        return status_r.json()
-                    except Exception:
-                        # Try extracting JSON from mixed response
-                        start = status_r.text.find("{")
-                        if start >= 0:
-                            import json
-                            return json.loads(status_r.text[start:])
-                if "Status=FAILED" in status_r.text:
-                    raise RuntimeError("BLAST search failed")
-            raise TimeoutError("BLAST search timed out after 150 seconds")
+                if status == "FAILED":
+                    raise BlastFailed(f"BLAST search {rid} failed server-side")
+                if status == "UNKNOWN":
+                    raise BlastFailed(
+                        f"BLAST search {rid} expired or is not recognised by the server"
+                    )
+                # READY
+                result = client.get(url, params={
+                    "CMD": "Get", "RID": rid, "FORMAT_TYPE": "JSON2",
+                })
+                result.raise_for_status()
+                return unpack_blast_json2(result.content)
+
+            raise TimeoutError(
+                f"BLAST search {rid} still running after "
+                f"{self.BLAST_POLL_SECONDS * self.BLAST_MAX_POLLS}s"
+            )
 
     def search_clinvar(self, gene: str, max_results: int = 50) -> list[dict]:
         term = f"{gene}[Gene Name]"
