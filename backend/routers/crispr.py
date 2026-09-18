@@ -64,8 +64,12 @@ def design_guides(req: CRISPRDesignRequest) -> CRISPRDesignResponse:
     guides: list[GuideRNA] = []
 
     if cas in (CasType.CAS9, CasType.CAS9_HF):
-        # Forward strand: guide+PAM = 20nt + NGG
-        for m in re.finditer(r"(?=(.{20})GG)", target):
+        # Forward strand: guide+PAM = 20 nt protospacer + N + GG.
+        # The N BELONGS TO THE PAM. `(?=(.{20})GG)` captured it as the guide's
+        # last base, so every guide was shifted one base along the target and the
+        # real protospacer was never returned -- with the mismatch landing in the
+        # PAM-proximal seed, where SpCas9 is least tolerant (#53).
+        for m in re.finditer(r"(?=(.{20}).GG)", target):
             guide_seq = m.group(1)
             pos = m.start()
             gc = _gc_content(guide_seq)
@@ -80,7 +84,7 @@ def design_guides(req: CRISPRDesignRequest) -> CRISPRDesignResponse:
             ))
         # Reverse strand
         rc_target = _reverse_complement(target)
-        for m in re.finditer(r"(?=(.{20})GG)", rc_target):
+        for m in re.finditer(r"(?=(.{20}).GG)", rc_target):
             guide_seq = m.group(1)
             pos = len(target) - m.start() - 20
             gc = _gc_content(guide_seq)

@@ -33,7 +33,7 @@ def test_seed_mismatch_penalized_more_than_distal() -> None:
 def test_on_target_excluded() -> None:
     """A guide scanned against only its own origin has zero off-targets."""
     guide = "ACGTACGTACGTACGTACGT"
-    reference = guide + "GG"  # protospacer + GG PAM, single on-target site
+    reference = guide + "AGG"  # protospacer + NGG PAM, single on-target site
     result = scan_off_targets(guide, [reference], cas_family="cas9")
     assert result.summary["0"] == 0
     assert result.total == 0
@@ -43,7 +43,7 @@ def test_on_target_excluded() -> None:
 def test_exact_off_target_detected() -> None:
     """A second identical protospacer+PAM is a real off-target and tanks score."""
     guide = "ACGTACGTACGTACGTACGT"
-    site = guide + "GG"
+    site = guide + "AGG"   # protospacer + N + GG (#53)
     reference = site + "AAAAAAAA" + site  # on-target + one exact duplicate
     result = scan_off_targets(guide, [reference], cas_family="cas9")
     assert result.summary["0"] == 1
@@ -54,9 +54,9 @@ def test_exact_off_target_detected() -> None:
 def test_mismatch_off_target_bucketed() -> None:
     """A near-match with a single mismatch lands in the 1-mismatch bucket."""
     guide = "ACGTACGTACGTACGTACGT"
-    on_target = guide + "GG"
+    on_target = guide + "AGG"
     # Same protospacer with one substitution at position 5 (A->T), still + GG.
-    mm_site = "ACGTTCGTACGTACGTACGT" + "GG"
+    mm_site = "ACGTTCGTACGTACGTACGT" + "AGG"
     reference = on_target + "CCCCCC" + mm_site
     result = scan_off_targets(guide, [reference], cas_family="cas9")
     assert result.summary["0"] == 0  # on-target removed
@@ -66,6 +66,6 @@ def test_mismatch_off_target_bucketed() -> None:
 
 def test_max_mismatches_bounds_buckets() -> None:
     guide = "ACGTACGTACGTACGTACGT"
-    reference = guide + "GG"
+    reference = guide + "AGG"
     result = scan_off_targets(guide, [reference], cas_family="cas9", max_mismatches=2)
     assert set(result.summary.keys()) == {"0", "1", "2"}

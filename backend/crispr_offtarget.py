@@ -72,11 +72,15 @@ def _pam_positions_cas9(reference: str, guide_len: int) -> list[int]:
     """Start indices of guide-length windows immediately followed by a GG PAM.
 
     Matches the convention used by the guide designer (``routers/crispr.py``):
-    the protospacer is a ``guide_len``-mer whose next two bases are ``GG``.
+    the protospacer is a ``guide_len``-mer followed by the PAM ``NGG`` -- so the
+    two Gs sit at ``i + guide_len + 1`` and ``+ 2``, not ``+ 0`` and ``+ 1``.
     """
     positions = []
-    for i in range(len(reference) - guide_len - 2 + 1):
-        if reference[i + guide_len] == "G" and reference[i + guide_len + 1] == "G":
+    # protospacer [i, i+guide_len), then N at i+guide_len, then GG. The N is the
+    # PAM's, not the guide's -- this checked for GG one base early, matching the
+    # designer's own off-by-one (#53).
+    for i in range(len(reference) - guide_len - 3 + 1):
+        if reference[i + guide_len + 1] == "G" and reference[i + guide_len + 2] == "G":
             positions.append(i)
     return positions
 

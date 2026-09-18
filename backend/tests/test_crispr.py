@@ -147,8 +147,9 @@ def test_off_targets_populated(client: TestClient, tp53_exon7: str) -> None:
 def test_off_targets_find_paralog(client: TestClient) -> None:
     """An exact duplicate site in a reference sequence is flagged as off-target."""
     guide = "ACGTACGTACGTACGTACGT"
-    target = "GGGG" + guide + "GG" + "CCCC"            # on-target site (protospacer + GG)
-    paralog = "AAAA" + guide + "GG" + "TTTT"           # identical protospacer elsewhere
+    # A site is protospacer + N + GG: the N belongs to the PAM, not the guide (#53).
+    target = "GGGG" + guide + "AGG" + "CCCC"           # on-target site (protospacer + NGG)
+    paralog = "AAAA" + guide + "AGG" + "TTTT"          # identical protospacer elsewhere
     r = client.post("/crispr/design", json={
         "target_sequence": target,
         "cas_type": "SpCas9",
@@ -175,3 +176,41 @@ def test_off_targets_skipped_for_cas13(client: TestClient, tp53_exon7: str) -> N
     for g in r.json()["guides"]:
         assert g["off_target_count"] is None
         assert g["specificity_score"] is None
+
+
+def test_spcas9_guide_is_the_protospacer_and_excludes_the_pam(client: TestClient) -> None:
+    """#53. The SpCas9 PAM is N-GG, and `(?=(.{20})GG)` captured the N as the
+    guide's last base — so every returned guide was shifted one base along the
+    target and carried a PAM base, and the real protospacer was never returned
+    at all. The mismatch lands in the PAM-proximal seed, where SpCas9 is least
+    tolerant, so ordered guides largely would not cut.
+    """
+    protospacer = "GACGTTACGATCGGATCCAT"
+    target = "CCCCC" + protospacer + "TGG" + "CCCCC"
+
+    r = client.post("/crispr/design", json={
+        "target_sequence": target, "cas_type": "SpCas9", "max_guides": 20})
+    assert r.status_code == 200
+    guides = r.json()["guides"]
+    found = [g for g in guides if g["strand"] == "+"]
+
+    assert protospacer in [g["sequence"] for g in found], [g["sequence"] for g in found]
+    # the shifted read: the last base of the guide taken from the PAM
+    assert "ACGTTACGATCGGATCCATT" not in [g["sequence"] for g in guides]
+    hit = next(g for g in found if g["sequence"] == protospacer)
+    assert hit["position"] == 5, hit
+
+
+def test_spcas9_reverse_strand_guide_is_also_the_protospacer(client: TestClient) -> None:
+    """The reverse-strand branch carried the same off-by-one (#53)."""
+    protospacer = "GACGTTACGATCGGATCCAT"
+    # on the minus strand: the reverse complement of (protospacer + N + GG)
+    site = protospacer + "TGG"
+    rc_site = site.translate(str.maketrans("ACGT", "TGCA"))[::-1]
+    target = "AAAAA" + rc_site + "AAAAA"
+
+    r = client.post("/crispr/design", json={
+        "target_sequence": target, "cas_type": "SpCas9", "max_guides": 20})
+    assert r.status_code == 200
+    minus = [g["sequence"] for g in r.json()["guides"] if g["strand"] == "-"]
+    assert protospacer in minus, minus
