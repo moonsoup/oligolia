@@ -121,7 +121,10 @@ class UpdateDialog(QDialog):
         self._status.show()
         self._status.setText(f"Downloading {filename} ({self._info.download_size_hint})…")
 
-        self._worker = DownloadWorker(url, filename)
+        # Only the patch has a published digest; a full installer is launched by
+        # the OS, which does its own signature checking (#48).
+        expected = getattr(self._info, "patch_sha256", "") if self._info.can_patch else ""
+        self._worker = DownloadWorker(url, filename, sha256=expected or None)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_downloaded)
         self._worker.error.connect(self._on_error)

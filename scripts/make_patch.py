@@ -21,6 +21,7 @@ Defaults:
 
 import sys
 import tarfile
+import hashlib
 import json
 from pathlib import Path
 
@@ -83,12 +84,25 @@ def make_patch() -> None:
     patch_size = patch_path.stat().st_size
     print(f"\nPatch size:  {patch_size / 1024 / 1024:.1f} MB")
 
+    # Publish the digest so the updater can prove the download is the patch we
+    # built, and not a truncated or substituted one (#48.3).
+    digest = hashlib.sha256()
+    with open(patch_path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(block)
+    patch_sha256 = digest.hexdigest()
+    print(f"Patch sha256: {patch_sha256}")
+
     # Generate manifest
     manifest = {
         "version": VERSION,
         "requires_full": False,
         "min_compatible_base": "0.3.0",  # oldest version this patch applies to
         "changelog": f"Oligolia {VERSION}",
+        # Digest and size of darwin_patch. The updater refuses a download whose
+        # length or digest does not match (#48).
+        "darwin_patch_sha256": patch_sha256,
+        "darwin_patch_bytes": patch_size,
         "assets": {
             "darwin_patch": patch_name,
             "darwin_full": f"Oligolia-{VERSION}-mac.dmg",

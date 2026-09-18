@@ -28,6 +28,7 @@ import tempfile
 import subprocess
 import tarfile
 import shutil
+import hashlib
 import logging
 from pathlib import Path
 
@@ -89,7 +90,7 @@ def _platform_full_asset(version: str) -> str:
 class UpdateInfo:
     def __init__(self, version: str, body: str, html_url: str,
                  patch_url: str, full_url: str, requires_full: bool,
-                 min_compatible_base: str) -> None:
+                 min_compatible_base: str, patch_sha256: str = "") -> None:
         self.version = version
         self.body = body
         self.html_url = html_url
@@ -97,6 +98,9 @@ class UpdateInfo:
         self.full_url = full_url
         self.requires_full = requires_full
         self.min_compatible_base = min_compatible_base
+        #: From the release manifest. Empty when the release predates #48, in
+        #: which case the length check is the only guarantee available.
+        self.patch_sha256 = patch_sha256
 
     @property
     def is_newer(self) -> bool:
@@ -159,6 +163,7 @@ class UpdateChecker(QThread):
             manifest_url = assets.get(manifest_name, "")
             requires_full = False
             min_compat = "0.0.0"
+            patch_sha256 = ""
             patch_name = _platform_patch_asset(tag)
             full_name = _platform_full_asset(tag)
             _log.info("Looking for manifest: %s  found=%s", manifest_name, bool(manifest_url))
@@ -170,6 +175,7 @@ class UpdateChecker(QThread):
                     manifest = mresp.json()
                     requires_full = manifest.get("requires_full", False)
                     min_compat = manifest.get("min_compatible_base", "0.0.0")
+                    patch_sha256 = manifest.get("darwin_patch_sha256", "")
                     m_assets = manifest.get("assets", {})
                     if "darwin_patch" in m_assets and platform.system() == "Darwin":
                         patch_name = m_assets["darwin_patch"]
@@ -189,6 +195,7 @@ class UpdateChecker(QThread):
                 version=tag, body=body, html_url=html_url,
                 patch_url=patch_url, full_url=full_url,
                 requires_full=requires_full, min_compatible_base=min_compat,
+                patch_sha256=patch_sha256,
             )
             _log.info("is_newer=%s can_patch=%s download_url=%s",
                       info.is_newer, info.can_patch, info.download_url)
@@ -206,14 +213,24 @@ class DownloadWorker(QThread):
     finished = pyqtSignal(str)   # local file path
     error = pyqtSignal(str)
 
-    def __init__(self, url: str, filename: str) -> None:
+    def __init__(self, url: str, filename: str, sha256: str | None = None) -> None:
         super().__init__()
         self._url = url
         self._filename = filename
+        #: Expected digest from the release manifest, when one is published.
+        self._sha256 = sha256
 
     def run(self) -> None:
+        """Download, then REFUSE anything that is not provably complete.
+
+        `finished` used to fire whatever arrived: if the connection dropped
+        mid-stream the loop simply ended and a truncated .tar.gz was handed to
+        apply_code_patch, which wrote it over the live bundle. Nothing
+        distinguished a partial file from a complete one (#48.1).
+        """
+        dest = os.path.join(tempfile.gettempdir(), self._filename)
         try:
-            dest = os.path.join(tempfile.gettempdir(), self._filename)
+            digest = hashlib.sha256()
             with httpx.Client(timeout=300, follow_redirects=True) as client:
                 with client.stream("GET", self._url) as r:
                     r.raise_for_status()
@@ -225,11 +242,29 @@ class DownloadWorker(QThread):
                     with open(dest, "wb") as f:
                         for chunk in r.iter_bytes(chunk_size=65536):
                             f.write(chunk)
+                            digest.update(chunk)
                             downloaded += len(chunk)
                             if total:
                                 self.progress.emit(int(downloaded / total * 100))
+
+            if total and downloaded != total:
+                raise OSError(
+                    f"download incomplete: got {downloaded} of {total} bytes "
+                    "(connection dropped?)"
+                )
+            if self._sha256 and digest.hexdigest().lower() != self._sha256.lower():
+                raise OSError(
+                    f"sha256 mismatch: expected {self._sha256}, got {digest.hexdigest()}"
+                )
+
             self.finished.emit(dest)
         except Exception as e:
+            # Never leave a partial file where a later run might pick it up.
+            try:
+                if os.path.exists(dest):
+                    os.unlink(dest)
+            except OSError:
+                pass
             self.error.emit(str(e))
 
 
@@ -246,22 +281,78 @@ def apply_code_patch(patch_path: str) -> None:
     if not app:
         raise RuntimeError("Cannot locate .app bundle — are you running from the installed app?")
 
-    with tarfile.open(patch_path, "r:gz") as tar:
-        for member in tar.getmembers():
-            # Resolve destination and reject any path that escapes the .app bundle
-            dest = (app / member.name).resolve()
-            if not str(dest).startswith(str(app.resolve())):
-                raise RuntimeError(
-                    f"Patch contains unsafe path '{member.name}' — aborting"
-                )
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            if member.isfile():
-                with tar.extractfile(member) as src, open(dest, "wb") as dst:
-                    shutil.copyfileobj(src, dst)
-                # Preserve executable bit for the main binary
-                if "MacOS/" in member.name:
-                    os.chmod(dest, 0o755)
+    app_root = app.resolve()
 
+    # THREE PHASES, and the live bundle is not touched until the third.
+    #
+    # The old code extracted each member straight over the live bundle inside the
+    # loop, and Contents/MacOS/Oligolia is the first member. So a bad archive
+    # overwrote the executable FIRST and raised on a later member; the dialog
+    # then offered the full installer, but the installed binary was already
+    # destroyed, with no backup to roll back to (#48.2).
+    staging = Path(tempfile.mkdtemp(prefix="oligolia-patch-"))
+    backup = Path(tempfile.mkdtemp(prefix="oligolia-backup-"))
+    applied: list[tuple[Path, Path]] = []   # (live path, backup path)
+
+    try:
+        # ── 1. Extract and validate everything into staging ─────────────────
+        # Reading every member here is what catches a truncated archive: the
+        # gzip/tar layer raises before anything live has been touched.
+        planned: list[tuple[Path, Path]] = []   # (staged file, live destination)
+        with tarfile.open(patch_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                dest = (app / member.name).resolve()
+                # is_relative_to, NOT a string prefix. `startswith` accepts a
+                # SIBLING directory: /Applications/Oligolia.app.evil/x starts
+                # with /Applications/Oligolia.app, so a patch could write
+                # outside the bundle it is meant to be confined to.
+                if not dest.is_relative_to(app_root):
+                    raise RuntimeError(
+                        f"Patch contains unsafe path '{member.name}' — aborting"
+                    )
+                if not member.isfile():
+                    continue
+                staged = staging / member.name
+                staged.parent.mkdir(parents=True, exist_ok=True)
+                with tar.extractfile(member) as src, open(staged, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                if "MacOS/" in member.name:
+                    os.chmod(staged, 0o755)
+                planned.append((staged, dest))
+
+        if not planned:
+            raise RuntimeError("Patch contains no files — aborting")
+
+        # ── 2. Back up every live file the patch will replace ───────────────
+        for _staged, dest in planned:
+            if dest.exists():
+                saved = backup / dest.relative_to(app_root)
+                saved.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(dest, saved)
+
+        # ── 3. Swap the staged files in ─────────────────────────────────────
+        for staged, dest in planned:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            saved = backup / dest.relative_to(app_root)
+            shutil.copy2(staged, dest)
+            applied.append((dest, saved))
+
+    except Exception:
+        # Put back everything already swapped, in reverse order.
+        for dest, saved in reversed(applied):
+            try:
+                if saved.exists():
+                    shutil.copy2(saved, dest)
+                else:
+                    dest.unlink(missing_ok=True)
+            except OSError:
+                _log.exception("rollback failed for %s", dest)
+        raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+    # Only re-sign after a clean swap.
+    #
     # Clear code signature — patched binary won't match original sig
     subprocess.run(["codesign", "--remove-signature", str(app)],
                    capture_output=True)
@@ -269,6 +360,9 @@ def apply_code_patch(patch_path: str) -> None:
     # Re-sign ad-hoc so Gatekeeper accepts it
     subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app)],
                    capture_output=True)
+
+    # The backup is only useful until the swap succeeds.
+    shutil.rmtree(backup, ignore_errors=True)
 
 
 def launch_full_installer(path: str) -> None:

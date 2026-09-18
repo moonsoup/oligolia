@@ -4,6 +4,7 @@ Uses unittest.mock to simulate GitHub API responses and filesystem state
 so these tests run without a network connection or a PyInstaller bundle.
 """
 
+import shutil
 import io
 import os
 import sys
@@ -428,3 +429,292 @@ def test_restart_app_calls_execv():
     args = mock_execv.call_args[0]
     assert args[0] == sys.executable
     assert sys.executable in args[1]
+
+
+# ── #48: the updater could brick the installed app ───────────────────────────
+#
+# Two compounding defects. Neither of the tests the issue said had been added
+# was actually in this file, so they are written here.
+
+
+def _tar_gz(members: list[tuple[str, bytes]]) -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, data in members:
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def test_download_worker_truncated_download_is_rejected(tmp_path):
+    """#48.1: `finished` fired even when downloaded < Content-Length.
+
+    A dropped connection produced a truncated .tar.gz that nothing
+    distinguished from a complete one.
+    """
+    from gui.updater import DownloadWorker
+
+    class FakeStream:
+        headers = {"content-length": "1000"}
+
+        def raise_for_status(self): ...
+        def iter_bytes(self, chunk_size=0):
+            yield b"x" * 400          # short: the connection "dropped"
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class FakeClient:
+        def __init__(self, *a, **k): ...
+        def stream(self, *a, **k): return FakeStream()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    worker = DownloadWorker("http://x/file.tar.gz", "trunc_test.tar.gz")
+    done, failed = [], []
+    worker.finished.connect(done.append)
+    worker.error.connect(failed.append)
+
+    with patch("gui.updater.httpx.Client", FakeClient), \
+         patch("gui.updater.tempfile.gettempdir", return_value=str(tmp_path)):
+        worker.run()
+
+    assert done == [], "a truncated download was reported as finished"
+    assert failed, "no error was reported for a truncated download"
+    assert "400" in failed[0] and "1000" in failed[0], failed[0]
+    assert not (tmp_path / "trunc_test.tar.gz").exists(), "the partial file was left behind"
+
+
+def test_download_worker_accepts_a_complete_download(tmp_path):
+    """The guard must not reject a good download."""
+    from gui.updater import DownloadWorker
+
+    payload = b"y" * 1000
+
+    class FakeStream:
+        headers = {"content-length": str(len(payload))}
+
+        def raise_for_status(self): ...
+        def iter_bytes(self, chunk_size=0):
+            yield payload
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class FakeClient:
+        def __init__(self, *a, **k): ...
+        def stream(self, *a, **k): return FakeStream()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    worker = DownloadWorker("http://x/file.tar.gz", "ok_test.tar.gz")
+    done, failed = [], []
+    worker.finished.connect(done.append)
+    worker.error.connect(failed.append)
+
+    with patch("gui.updater.httpx.Client", FakeClient), \
+         patch("gui.updater.tempfile.gettempdir", return_value=str(tmp_path)):
+        worker.run()
+
+    assert failed == [], failed
+    assert len(done) == 1
+    assert (tmp_path / "ok_test.tar.gz").read_bytes() == payload
+
+
+def test_download_worker_verifies_a_declared_sha256(tmp_path):
+    """A wrong digest must be refused even when the length matches."""
+    from gui.updater import DownloadWorker
+
+    payload = b"z" * 64
+
+    class FakeStream:
+        headers = {"content-length": str(len(payload))}
+
+        def raise_for_status(self): ...
+        def iter_bytes(self, chunk_size=0):
+            yield payload
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class FakeClient:
+        def __init__(self, *a, **k): ...
+        def stream(self, *a, **k): return FakeStream()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    worker = DownloadWorker("http://x/f.tar.gz", "sha_test.tar.gz", sha256="00" * 32)
+    done, failed = [], []
+    worker.finished.connect(done.append)
+    worker.error.connect(failed.append)
+
+    with patch("gui.updater.httpx.Client", FakeClient), \
+         patch("gui.updater.tempfile.gettempdir", return_value=str(tmp_path)):
+        worker.run()
+
+    assert done == [], "a payload with the wrong digest was accepted"
+    assert failed and "sha256" in failed[0].lower(), failed
+    assert not (tmp_path / "sha_test.tar.gz").exists()
+
+
+def test_apply_code_patch_rolls_back_live_files_on_failure(tmp_path):
+    """#48.2: the live executable was overwritten BEFORE a later member failed.
+
+    `update_dialog` catches the exception and offers the full installer, but by
+    then the installed binary is already destroyed and there is nothing to roll
+    back to. Next launch: broken app.
+    """
+    from gui.updater import apply_code_patch
+
+    app = tmp_path / "Oligolia.app"
+    (app / "Contents" / "MacOS").mkdir(parents=True)
+    exe = app / "Contents" / "MacOS" / "Oligolia"
+    exe.write_bytes(b"OLD-WORKING-BINARY")
+
+    # First member replaces the executable; second is a directory traversal, so
+    # the apply aborts after the first has already been written by the old code.
+    patch_bytes = _tar_gz([
+        ("Contents/MacOS/Oligolia", b"NEW-BINARY"),
+        ("../../evil.txt", b"pwned"),
+    ])
+    patch_file = tmp_path / "patch.tar.gz"
+    patch_file.write_bytes(patch_bytes)
+
+    evil = tmp_path.parent / "evil.txt"
+    if evil.exists():
+        evil.unlink()
+
+    try:
+        with patch("gui.updater._app_bundle_path", return_value=app), \
+             patch("subprocess.run"):
+            with pytest.raises(RuntimeError):
+                apply_code_patch(str(patch_file))
+
+        assert exe.read_bytes() == b"OLD-WORKING-BINARY", (
+            "the live executable was left clobbered after a failed apply"
+        )
+        assert not evil.exists()
+    finally:
+        if evil.exists():
+            evil.unlink()
+
+
+def test_apply_code_patch_rolls_back_on_a_truncated_archive(tmp_path):
+    """A truncated archive must be detected before anything is touched."""
+    from gui.updater import apply_code_patch
+
+    app = tmp_path / "Oligolia.app"
+    (app / "Contents" / "MacOS").mkdir(parents=True)
+    exe = app / "Contents" / "MacOS" / "Oligolia"
+    exe.write_bytes(b"OLD-WORKING-BINARY")
+
+    good = _tar_gz([
+        ("Contents/MacOS/Oligolia", b"NEW-BINARY"),
+        ("Contents/Resources/version.py", b'VERSION = "9.9.9"\n'),
+    ])
+    truncated = tmp_path / "patch.tar.gz"
+    truncated.write_bytes(good[: len(good) // 2])
+
+    with patch("gui.updater._app_bundle_path", return_value=app), \
+         patch("subprocess.run"):
+        with pytest.raises(Exception):
+            apply_code_patch(str(truncated))
+
+    assert exe.read_bytes() == b"OLD-WORKING-BINARY"
+
+
+def test_apply_code_patch_succeeds_and_swaps_atomically(tmp_path):
+    """The happy path must still work, and must apply every member."""
+    from gui.updater import apply_code_patch
+
+    app = tmp_path / "Oligolia.app"
+    (app / "Contents" / "MacOS").mkdir(parents=True)
+    (app / "Contents" / "Resources").mkdir(parents=True)
+    exe = app / "Contents" / "MacOS" / "Oligolia"
+    exe.write_bytes(b"OLD-WORKING-BINARY")
+    ver = app / "Contents" / "Resources" / "version.py"
+    ver.write_bytes(b'VERSION = "1.0.0"\n')
+
+    patch_file = tmp_path / "patch.tar.gz"
+    patch_file.write_bytes(_tar_gz([
+        ("Contents/MacOS/Oligolia", b"NEW-BINARY"),
+        ("Contents/Resources/version.py", b'VERSION = "9.9.9"\n'),
+    ]))
+
+    with patch("gui.updater._app_bundle_path", return_value=app), \
+         patch("subprocess.run"):
+        apply_code_patch(str(patch_file))
+
+    assert exe.read_bytes() == b"NEW-BINARY"
+    assert b"9.9.9" in ver.read_bytes()
+    assert os.access(exe, os.X_OK), "the executable bit was not preserved"
+
+
+def test_the_traversal_guard_is_not_a_string_prefix(tmp_path):
+    """`str(dest).startswith(str(app))` passes for a SIBLING directory.
+
+    /tmp/x/Oligolia.app.evil/... starts with /tmp/x/Oligolia.app, so a prefix
+    test lets a patch write outside the bundle it is supposed to be confined to.
+    """
+    from gui.updater import apply_code_patch
+
+    app = tmp_path / "Oligolia.app"
+    (app / "Contents" / "MacOS").mkdir(parents=True)
+    sibling = tmp_path / "Oligolia.app.evil"
+
+    patch_file = tmp_path / "patch.tar.gz"
+    patch_file.write_bytes(_tar_gz([("../Oligolia.app.evil/pwned.txt", b"pwned")]))
+
+    try:
+        with patch("gui.updater._app_bundle_path", return_value=app), \
+             patch("subprocess.run"):
+            with pytest.raises(RuntimeError, match="unsafe path"):
+                apply_code_patch(str(patch_file))
+        assert not (sibling / "pwned.txt").exists(), (
+            "a sibling directory sharing the bundle's name prefix was written to"
+        )
+    finally:
+        if sibling.exists():
+            shutil.rmtree(sibling, ignore_errors=True)
+
+
+def test_the_manifest_digest_reaches_the_download_worker():
+    """#48.3: publishing a digest is pointless if nothing passes it along.
+
+    Walks the chain: manifest field -> UpdateInfo.patch_sha256 -> the `sha256`
+    argument the dialog gives DownloadWorker.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    from gui import update_dialog
+    from gui.updater import UpdateInfo
+
+    info = UpdateInfo(
+        version="9.9.9", body="", html_url="", patch_url="http://x/p.tar.gz",
+        full_url="http://x/f.dmg", requires_full=False,
+        min_compatible_base="0.0.0", patch_sha256="abc123",
+    )
+    assert info.patch_sha256 == "abc123"
+
+    # The dialog must pass a sha256 to DownloadWorker, not construct it bare.
+    src = textwrap.dedent(inspect.getsource(update_dialog.UpdateDialog._start_download))
+    fn = ast.parse(src).body[0]
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
+                and node.func.id == "DownloadWorker":
+            assert "sha256" in {kw.arg for kw in node.keywords}, (
+                "DownloadWorker is constructed without sha256; the published "
+                "digest would never be checked (#48)"
+            )
+            break
+    else:
+        raise AssertionError("DownloadWorker(...) not found in _start_download")
+
+
+def test_make_patch_publishes_the_digest():
+    """The other end of the chain."""
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[2] / "scripts" / "make_patch.py").read_text()
+    assert "darwin_patch_sha256" in source
+    assert "hashlib" in source
