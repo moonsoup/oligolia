@@ -21,7 +21,7 @@ from PyQt6.QtGui import (
 
 from Bio.Seq import Seq
 from backend.models.sequence import Sequence, MoleculeType, Annotation
-from backend.formats import read_fasta, read_fastq, read_genbank, read_snapgene, VENDORS
+from backend.formats import read_embl, read_fasta, read_fastq, read_genbank, read_snapgene, VENDORS
 from gui.history import UndoStack
 from gui.panels.feature_colors import feature_color_map
 from gui.panels.plasmid_map import PlasmidMapWidget
@@ -337,6 +337,29 @@ class TermsDialog(QDialog):
     def _on_toggle(self, checked: bool) -> None:
         # Explicit affirmative action required — OK stays disabled until checked.
         self._buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(checked)
+
+
+#: Which reader handles which file extension.
+#:
+#: `.embl` routed to `read_genbank`, so an EMBL file parsed to zero records and
+#: loaded with no sequences and no error — `read_embl` existed and worked the
+#: whole time (#67). Kept at module level so the mapping is testable without
+#: driving a file dialog.
+READERS_BY_EXTENSION = {
+    "fasta": read_fasta,
+    "fa": read_fasta,
+    "fna": read_fasta,
+    "faa": read_fasta,
+    "fastq": read_fastq,
+    "fq": read_fastq,
+    "gb": read_genbank,
+    "gbk": read_genbank,
+    "embl": read_embl,
+    "dna": read_snapgene,
+}
+
+#: Extensions whose readers need a binary handle.
+BINARY_EXTENSIONS = frozenset({"dna"})
 
 
 class SequencePanel(QWidget):
@@ -1052,15 +1075,23 @@ class SequencePanel(QWidget):
             return
         ext = path.rsplit(".", 1)[-1].lower()
         try:
-            readers = {"fasta": read_fasta, "fa": read_fasta, "fna": read_fasta,
-                       "faa": read_fasta, "fastq": read_fastq, "fq": read_fastq,
-                       "gb": read_genbank, "gbk": read_genbank, "embl": read_genbank,
-                       "dna": read_snapgene}
-            reader = readers.get(ext, read_fasta)
+            reader = READERS_BY_EXTENSION.get(ext, read_fasta)
             # SnapGene .dna is binary; the rest are text.
-            mode = "rb" if ext == "dna" else "r"
+            mode = "rb" if ext in BINARY_EXTENSIONS else "r"
             with open(path, mode) as f:
                 seqs = reader(f)
+            if not seqs:
+                # A reader that returns nothing used to load silently, so an .embl
+                # routed to read_genbank looked like an empty file rather than a
+                # wrong parser (#67).
+                QMessageBox.warning(
+                    self, "Nothing to import",
+                    f"No sequences were found in:\n{path}\n\n"
+                    f"It was read as {reader.__name__.replace('read_', '').upper()} "
+                    f"based on its .{ext} extension. If that is the wrong format, "
+                    "rename the file or convert it first.",
+                )
+                return
             for seq in seqs:
                 self.add_sequence(seq)
         except Exception as e:

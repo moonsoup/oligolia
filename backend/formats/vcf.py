@@ -5,17 +5,48 @@ from typing import Iterator, TextIO
 from ..models.variant import Variant, VariantType
 
 
+#: Symbolic ALT alleles from the VCF 4.x spec, mapped by their leading keyword so
+#: that subtypes like <DEL:ME:ALU> and <DUP:TANDEM> resolve too.
+#:
+#: These must be matched BEFORE any length comparison. `len("<DEL>") > len("A")`,
+#: so the old length heuristic reported every structural deletion as an insertion
+#: (#67). A symbolic allele's spelling says nothing about the variant's size.
+_SYMBOLIC_ALT = {
+    "DEL": VariantType.DEL,
+    "INS": VariantType.INS,
+    "DUP": VariantType.CNV,   # a duplication is a copy-number gain
+    "CNV": VariantType.CNV,
+    "INV": VariantType.SV,
+    "TRA": VariantType.SV,
+    "BND": VariantType.SV,
+}
+
+
+def _classify_alt(ref: str, alt: str) -> VariantType | None:
+    """Type one ALT allele, or None if it carries no information."""
+    if alt in (".", "*", ""):
+        return None
+
+    # Breakend notation: A[13:123457[ , ]17:198982]A and the other two forms.
+    if "[" in alt or "]" in alt:
+        return VariantType.SV
+
+    # Symbolic allele: <DEL>, <DUP:TANDEM>, <DEL:ME:ALU>, ...
+    if alt.startswith("<") and alt.endswith(">"):
+        keyword = alt[1:-1].split(":", 1)[0].upper()
+        return _SYMBOLIC_ALT.get(keyword, VariantType.SV)
+
+    # Literal alleles: the length comparison, which was always right for these.
+    if len(ref) == len(alt):
+        return VariantType.SNP  # SNP, or an MNP treated as the SNP class
+    return VariantType.INS if len(alt) > len(ref) else VariantType.DEL
+
+
 def _infer_type(ref: str, alts: list[str]) -> VariantType:
     for alt in alts:
-        if alt in (".", "*"):
-            continue
-        if len(ref) == 1 and len(alt) == 1:
-            return VariantType.SNP
-        if len(ref) == len(alt):
-            return VariantType.SNP  # MNP, treat as SNP class
-        if len(alt) > len(ref):
-            return VariantType.INS
-        return VariantType.DEL
+        kind = _classify_alt(ref, alt)
+        if kind is not None:
+            return kind
     return VariantType.UNKNOWN
 
 
