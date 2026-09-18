@@ -635,40 +635,141 @@ def gc_window(sequence: str, window_size: int = 100, step: int = 10) -> GCWindow
     return GCWindowResult(window_size=window_size, step=step, positions=positions, gc_values=values)
 
 
-@router.post("/find_repeats", response_model=list[RepeatResult])
-def find_repeats(sequence: str, min_unit: int = 2, max_unit: int = 8, min_copies: float = 2.0) -> list[RepeatResult]:
-    """Find tandem and inverted repeats."""
-    seq = sequence.strip().upper().replace(" ", "").replace("\n", "")
-    results: list[RepeatResult] = []
+def _primitive(unit: str) -> str:
+    """The smallest u such that unit == u * k. CACA -> CA, GGT -> GGT.
 
-    # Tandem repeats
-    for unit_len in range(min_unit, min(max_unit + 1, len(seq) // 2 + 1)):
-        for i in range(len(seq) - unit_len * int(min_copies) + 1):
+    A tandem repeat of CACA is the same repeat as a tandem of CA; reporting the
+    longer unit as well is how one microsatellite became several findings (#65).
+    """
+    n = len(unit)
+    for size in range(1, n + 1):
+        if n % size == 0 and unit[:size] * (n // size) == unit:
+            return unit[:size]
+    return unit
+
+
+def _tandem_repeats(seq: str, min_unit: int, max_unit: int, min_copies: float) -> list[RepeatResult]:
+    """Maximal tandem runs, one per locus.
+
+    Two rules do the work that the old (start, unit) dedup key could not:
+
+    * only PRIMITIVE units are considered, so (CA)40 is not also reported as
+      (CACA)20 and (CACACACA)10;
+    * a run is reported only where it is leftmost -- `seq[i-1] != seq[i+L-1]`
+      means the run cannot be extended one base to the left -- so the same run is
+      not reported again in every other phase as (AC)39, (AC)38 and so on.
+
+    Together those turn ~50 shifted fragments of one microsatellite into one
+    finding with the right unit, span and copy count.
+    """
+    hits: list[RepeatResult] = []
+    n = len(seq)
+
+    for unit_len in range(min_unit, min(max_unit, n // 2) + 1):
+        i = 0
+        while i + unit_len <= n:
             unit = seq[i:i + unit_len]
-            if len(set(unit)) < 1:
+            if _primitive(unit) != unit:
+                i += 1
                 continue
+            # Leftmost only: if the preceding base continues the pattern, this is
+            # a phase shift of a run that starts earlier.
+            if i > 0 and seq[i - 1] == seq[i + unit_len - 1]:
+                i += 1
+                continue
+
             j = i + unit_len
-            copies = 1.0
-            while j + unit_len <= len(seq) and seq[j:j + unit_len] == unit:
+            copies = 1
+            while j + unit_len <= n and seq[j:j + unit_len] == unit:
                 copies += 1
                 j += unit_len
-            if copies >= min_copies:
-                results.append(RepeatResult(
-                    repeat_type="tandem",
-                    unit=unit, start=i, end=j,
-                    copies=copies, length=j - i,
-                ))
-                # Skip past this repeat
-    # Deduplicate (keep longest at each position)
-    seen: set[tuple[int, str]] = set()
-    unique = []
-    for r in sorted(results, key=lambda x: -x.length):
-        key = (r.start, r.unit)
-        if key not in seen:
-            seen.add(key)
-            unique.append(r)
 
-    return sorted(unique[:50], key=lambda x: x.start)
+            if copies >= min_copies:
+                hits.append(RepeatResult(
+                    repeat_type="tandem", unit=unit, start=i, end=j,
+                    copies=float(copies), length=j - i,
+                ))
+                i = j  # never re-scan inside a run we just reported
+            else:
+                i += 1
+
+    # Drop any run wholly inside another (a short unit nested in a longer span).
+    hits.sort(key=lambda r: (-r.length, r.start))
+    kept: list[RepeatResult] = []
+    for r in hits:
+        if not any(k.start <= r.start and r.end <= k.end for k in kept):
+            kept.append(r)
+    return kept
+
+
+def _inverted_repeats(
+    seq: str, min_arm: int, max_arm: int, max_spacer: int
+) -> list[RepeatResult]:
+    """Arm ... spacer ... reverse-complement(arm).
+
+    The module header, the `repeat_type` field and the docstring all advertised
+    inverted repeats; nothing implemented them (#65.3). `unit` is the left arm and
+    the span runs from the start of the left arm to the end of the right one.
+    """
+    comp = str.maketrans("ACGTacgt", "TGCAtgca")
+    n = len(seq)
+    hits: list[RepeatResult] = []
+
+    for arm in range(max_arm, min_arm - 1, -1):
+        for i in range(0, n - 2 * arm + 1):
+            left = seq[i:i + arm]
+            if "N" in left:
+                continue
+            target = left.translate(comp)[::-1]
+            lo = i + arm
+            hi = min(n, lo + max_spacer + arm)
+            found = seq.find(target, lo, hi)
+            if found == -1:
+                continue
+            hits.append(RepeatResult(
+                repeat_type="inverted", unit=left, start=i, end=found + arm,
+                copies=2.0, length=found + arm - i,
+            ))
+
+    # Longest arms win; drop anything contained in an already-kept span.
+    hits.sort(key=lambda r: (-len(r.unit), r.start))
+    kept: list[RepeatResult] = []
+    for r in hits:
+        if not any(k.start <= r.start and r.end <= k.end for k in kept):
+            kept.append(r)
+    return kept
+
+
+@router.post("/find_repeats", response_model=list[RepeatResult])
+def find_repeats(
+    sequence: str,
+    min_unit: int = 2,
+    max_unit: int = 8,
+    min_copies: float = 2.0,
+    min_arm: int = 6,
+    max_arm: int = 30,
+    max_spacer: int = 100,
+    include_inverted: bool = True,
+    max_results: int = 50,
+) -> list[RepeatResult]:
+    """Find tandem and inverted repeats.
+
+    Tandem runs are maximal and reported once per locus with their primitive
+    unit. Inverted repeats are arm/spacer/reverse-complement-arm, bounded by
+    `max_spacer` so the search stays linear in practice.
+
+    `max_results` is applied to the LONGEST repeats and the survivors are then
+    sorted by position. The old code truncated an unsorted list, which is how a
+    genuine (GGT)6 was dropped while 50 fragments of one microsatellite were kept.
+    """
+    seq = sequence.strip().upper().replace(" ", "").replace("\n", "")
+
+    results = _tandem_repeats(seq, min_unit, max_unit, min_copies)
+    if include_inverted:
+        results += _inverted_repeats(seq, min_arm, max_arm, max_spacer)
+
+    results.sort(key=lambda r: -r.length)
+    return sorted(results[:max_results], key=lambda r: r.start)
 
 
 @router.post("/optimize_codons", response_model=CodonOptResult)
