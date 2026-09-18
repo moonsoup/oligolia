@@ -142,8 +142,9 @@ def test_every_block_row_has_the_same_width() -> None:
     assert blocks, out
     for seq1, match, seq2 in blocks:
         assert len(seq1) == len(seq2), (seq1, seq2)
-        # The match row is padded to the same prefix width, so it must not be longer.
-        assert len(match) <= len(seq1)
+        # Strictly equal, not merely "not longer" — Codex noted the looser form let
+        # a short match row through while the commit claimed equal widths.
+        assert len(match) == len(seq1), (len(match), len(seq1), match, seq1)
 
 
 def test_every_bar_sits_under_two_matching_bases() -> None:
@@ -160,7 +161,9 @@ def test_every_bar_sits_under_two_matching_bases() -> None:
         chunk1, chunk2 = parts1[2], parts2[2]
         offset = seq1_row.index(chunk1)
         match = match_row[offset:offset + len(chunk1)]
-        assert len(match) == len(chunk1) or match.strip() == ""
+        # No `or match.strip() == ""` escape: Codex pointed out that let a blank
+        # match row satisfy the test, which is exactly the vacuous case.
+        assert len(match) == len(chunk1), (len(match), len(chunk1))
 
         for i, ch in enumerate(match):
             if ch == "|":
@@ -198,8 +201,29 @@ def test_blocks_are_no_wider_than_the_block_width() -> None:
 
 
 def test_the_panel_uses_the_block_formatter_and_does_not_wrap() -> None:
+    """Codex: a substring search for the name also matches its own definition.
+
+    So resolve it in the AST and require the call to happen inside _run_pairwise
+    — otherwise the pin passes even if that method goes back to rendering the
+    alignment by hand.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    from gui.panels.alignment_panel import AlignmentPanel
+
+    src = textwrap.dedent(inspect.getsource(AlignmentPanel._run_pairwise))
+    fn = ast.parse(src).body[0]
+    called = {
+        n.func.id for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+    }
+    assert "format_alignment_blocks" in called, (
+        "_run_pairwise must render through format_alignment_blocks (#77)"
+    )
+
     from pathlib import Path
 
     source = Path(__file__).with_name("alignment_panel.py").read_text()
-    assert "format_alignment_blocks(" in source
     assert "LineWrapMode.NoWrap" in source, "the result pane must not word-wrap (#77)"

@@ -31,6 +31,35 @@ LOG_PATH = Path(tempfile.gettempdir()) / "oligolia_crash.log"
 
 TITLE = "Oligolia hit an unexpected error"
 
+#: How many dialogs one distinct fault may raise before it goes quiet, and how
+#: many times it may be written to the log.
+#:
+#: Measured 2026-09-17, after Codex asked whether this had traded a crash for a
+#: dialog loop: a QTimer repeating every 5 ms raised the hook **55 times in
+#: 400 ms**. In a real app that is 55 modal dialogs, which is worse than the
+#: crash it replaced. A fault that fires on every paint event or every keystroke
+#: has to say so once and then keep quiet.
+MAX_DIALOGS_PER_FAULT = 1
+MAX_LOGS_PER_FAULT = 5
+
+#: fingerprint -> times seen this session.
+_seen: dict[str, int] = {}
+
+
+def _fingerprint(exc_type: type[BaseException], exc: BaseException, tb: object) -> str:
+    """Identify "the same fault again": type, message, and where it was raised."""
+    where = ""
+    frames = traceback.extract_tb(tb) if tb is not None else []  # type: ignore[arg-type]
+    if frames:
+        last = frames[-1]
+        where = f"{last.filename}:{last.lineno}"
+    return f"{exc_type.__name__}|{exc}|{where}"
+
+
+def reset() -> None:
+    """Forget what has been seen. For tests, and for a deliberate re-arm."""
+    _seen.clear()
+
 
 def _default_show(title: str, body: str) -> None:
     """Show the dialog. Imported lazily so this module is usable without Qt up."""
@@ -60,19 +89,32 @@ def handle_exception(
     path = log_path or LOG_PATH
     detail = "".join(traceback.format_exception(exc_type, exc, tb))  # type: ignore[arg-type]
 
+    fp = _fingerprint(exc_type, exc, tb)
+    _seen[fp] = seen_count = _seen.get(fp, 0) + 1
+
     # Always get it to stderr, which needs nothing to work.
     try:
         print(detail, file=sys.stderr)
     except Exception:
         pass
 
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(f"\n=== {datetime.now(timezone.utc).isoformat()} ===\n")
-            fh.write(detail)
-    except Exception:
-        pass  # an unwritable log must not become the crash
+    if seen_count <= MAX_LOGS_PER_FAULT:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as fh:
+                fh.write(f"\n=== {datetime.now(timezone.utc).isoformat()} ===\n")
+                if seen_count > 1:
+                    fh.write(f"(occurrence {seen_count} of this same fault)\n")
+                fh.write(detail)
+                if seen_count == MAX_LOGS_PER_FAULT:
+                    fh.write("(further occurrences of this fault will not be logged)\n")
+        except Exception:
+            pass  # an unwritable log must not become the crash
+
+    if seen_count > MAX_DIALOGS_PER_FAULT:
+        # Same fault again. Logged above (up to the cap) and on stderr; showing
+        # another dialog would be the loop this guard exists to avoid.
+        return
 
     body = (
         f"{exc_type.__name__}: {exc}\n\n"

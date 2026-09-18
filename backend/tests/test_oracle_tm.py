@@ -6,7 +6,21 @@ from 8 real hEDS-panel templates found 97 of them (81%) more than 3 degC out, wo
 case +9.0 degC, systematically worse on GC-rich sequence — exactly where stacking
 energy matters most.
 
-The oracle is Biopython's `Bio.SeqUtils.MeltingTemp.Tm_NN`, already a dependency.
+WHAT IS AND IS NOT INDEPENDENT HERE. Codex pointed out (2026-09-17) that since
+production now *wraps* `Tm_NN`, comparing the wrapper to a live `Tm_NN` call
+compares a function to itself. That is a fair hit, so the assertions are split:
+
+  * `TM_REFERENCE` holds values RECORDED from Biopython 1.85 on 2026-09-17. These
+    are a genuine reference: nothing in the test computes them at run time, so a
+    change in Biopython's tables, in TM_CONDITIONS, or in the wrapper all show up
+    as a failure. This is the real pin.
+  * the live-`Tm_NN` comparison is kept, but labelled for what it is — a
+    wrapper-integrity check, not independent validation.
+  * the genuinely independent assertions are the ones that compare two DIFFERENT
+    formulas: Wallace vs nearest-neighbour, order-sensitivity, and monotonicity.
+
+Neither form can validate Biopython's algorithm itself, or whether these
+conditions suit a real PCR buffer. That second question is filed separately.
 
 THE PARAMETER SET IS PART OF THE ASSERTION. Tm_NN takes four literature
 nearest-neighbour tables, both strand concentrations, four salt species and one of
@@ -45,8 +59,46 @@ NN_PARAMS = dict(
 )
 
 
+#: Recorded from Biopython 1.85 under NN_PARAMS on 2026-09-17. Regenerate
+#: deliberately, never by calling Tm_NN inside the test.
+TM_REFERENCE = {
+    "ATATTATAGCATATTATAGC": 36.1808,
+    "ATCAGTATCAGTATCAGTAT": 41.456,
+    "ACGTACGTACGTACGTACGT": 53.0967,
+    "ACGTGGCATCACGATGGCCT": 58.7795,
+    "GCCTGTGGGCATTTGGCCAA": 58.3455,
+    "GGCCGGCCGGCCGGCCAATT": 67.5152,
+    "GGCCGGCCGGCCGGCCGGCC": 74.4609,
+    "GCCGGCGGCGGCGCTGCTGC": 71.2411,
+    "GGGGGGGGGGAAAAAAAAAA": 52.7386,
+    "GAGAGAGAGAGAGAGAGAGA": 47.7551,
+}
+
+
 def oracle(seq: str) -> float:
+    """A live Tm_NN call. Wrapper-integrity only — see the module docstring."""
     return mt.Tm_NN(seq, **NN_PARAMS)
+
+
+@pytest.mark.parametrize("seq", sorted(TM_REFERENCE))
+def test_tm_matches_the_recorded_reference(seq: str) -> None:
+    """The real pin: recorded values, not a live call to the wrapped function."""
+    assert abs(_tm_nearest_neighbor(seq) - TM_REFERENCE[seq]) <= TOLERANCE_C, (
+        seq, _tm_nearest_neighbor(seq), TM_REFERENCE[seq]
+    )
+
+
+def test_the_recorded_reference_still_agrees_with_this_biopython() -> None:
+    """If Biopython's tables move, say so here rather than silently following."""
+    drifted = {
+        seq: (ref, round(oracle(seq), 4))
+        for seq, ref in TM_REFERENCE.items()
+        if abs(oracle(seq) - ref) > 0.01
+    }
+    assert not drifted, (
+        "Biopython's Tm_NN no longer matches the values recorded on 2026-09-17; "
+        f"re-record deliberately and note why: {drifted}"
+    )
 
 
 # A GC sweep, all 20-mers, roughly 30% -> 80% GC.
@@ -62,7 +114,11 @@ SWEEP = [
 
 
 @pytest.mark.parametrize("seq", SWEEP)
-def test_tm_matches_biopython_nn_across_a_gc_sweep(seq: str) -> None:
+def test_tm_matches_live_biopython_across_a_gc_sweep(seq: str) -> None:
+    """Wrapper integrity: that TM_CONDITIONS is really what gets passed through.
+
+    NOT independent validation — production wraps this same function.
+    """
     assert abs(_tm_nearest_neighbor(seq) - oracle(seq)) <= TOLERANCE_C, (
         seq, _tm_nearest_neighbor(seq), oracle(seq)
     )

@@ -14,6 +14,7 @@ Advanced sequence analysis — features common in SnapGene, Benchling, APE, Gene
 from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from Bio.SeqUtils.ProtParam import ProteinAnalysis
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -33,7 +34,12 @@ IUPAC_EXPAND: dict[str, frozenset[str]] = {
     "N": frozenset("ACGT"), "-": frozenset(), ".": frozenset(),
 }
 
-# ── Standard amino acid molecular weights (monoisotopic residue masses) ──────
+# ── Standard amino acid molecular weights (MONOISOTOPIC residue masses) ──────
+#
+# These are monoisotopic, not average. Summing them and reporting the result as
+# "Da" understated molecular_weight_da by ~10 Da on a 16 kDa chain (#63), so the
+# reported value now comes from ProteinAnalysis.molecular_weight(), which is
+# average mass. Retained for any caller that genuinely wants monoisotopic mass.
 
 AA_MW: dict[str, float] = {
     "A": 71.03711, "R": 156.10111, "N": 114.04293, "D": 115.02694,
@@ -48,9 +54,30 @@ WATER_MW = 18.01056
 # Extinction coefficients at 280 nm (M⁻¹cm⁻¹)
 EXT_W = 5500   # Trp
 EXT_Y = 1490   # Tyr
-EXT_C = 125    # Cys (disulfide — divide by 2 for reduced)
+EXT_C = 125    # per CYSTINE (one disulfide = two Cys), so the term is (C//2)*125.
+#              The old code wrote (C//2)*EXT_C*2, counting each bridge twice.
+#              Superseded by ProteinAnalysis.molar_extinction_coefficient() (#63).
 
-# pKa values for isoelectric point calculation (Bjellqvist / ProMoST scale)
+#: Closest standard-residue analogue for each non-standard code this endpoint
+#: accepts. Used only so ProtParam can compute mass/pI/instability/extinction,
+#: which are defined for the 20 standard residues; every substitution made is
+#: reported back in `nonstandard_substituted` so the caller is never guessing.
+#: U (selenocysteine) -> C and O (pyrrolysine) -> K are the chemical analogues.
+#: B/Z/J are IUPAC ambiguity codes resolved to one member; X is unknown, and G
+#: is an arbitrary neutral choice for it -- which is exactly why it is declared.
+NONSTANDARD_ANALOGUE: dict[str, str] = {
+    "U": "C",  # selenocysteine
+    "O": "K",  # pyrrolysine
+    "B": "D",  # Asx (D or N)
+    "Z": "E",  # Glx (E or Q)
+    "J": "L",  # Xle (L or I)
+    "X": "G",  # unknown -- arbitrary
+}
+
+# pKa values used by _calc_pI. Labelled Bjellqvist/ProMoST but they are not that
+# set, which is why the reported pI disagreed with ProtParam by ~0.4 (#63). The
+# reported isoelectric_point now comes from ProteinAnalysis; these are still used
+# for charge_at_ph7, which ProtParam has no equivalent for.
 PKA: dict[str, float] = {
     "N_term": 7.59, "C_term": 3.10,
     "D": 3.90, "E": 4.07, "H": 6.04,
@@ -74,6 +101,10 @@ class ProteinPropsResult(BaseModel):
     aa_composition: dict[str, int]
     signal_peptide_predicted: bool
     signal_peptide_end: int | None
+    #: Non-standard residues that were mapped to a standard analogue in order to
+    #: compute mass/pI/instability/extinction, e.g. {"U": "C"}. Empty for an
+    #: all-standard sequence. aa_composition always reports the real residues.
+    nonstandard_substituted: dict[str, str] = {}
 
 
 class ORF(BaseModel):
@@ -160,7 +191,18 @@ def _calc_pI(seq: str) -> tuple[float, float]:
     return round((lo + hi) / 2, 2), round(charge(7.0), 2)
 
 
-# Instability index DIWV (Guruprasad et al. 1990) dipeptide weights
+# Instability index DIWV (Guruprasad et al. 1990) dipeptide weights.
+#
+# NOT what /analysis/protein_properties reports any more, and not usable as an
+# instability index: this holds 25 of the 400 dipeptides, and _instability()
+# scores every pair it does not know as 0.0, so a protein made of unlisted
+# dipeptides came out near zero -- i.e. "stable" -- whatever it actually is.
+# Measured against the real table: HBB 0.21 vs 6.16, lysozyme 3.57 vs 16.09, and
+# a p53 fragment 3.53 vs 92.84 (#63).
+#
+# The full 400-entry table lives in Bio.SeqUtils.ProtParamData.DIWV and is what
+# ProteinAnalysis.instability_index() uses. Kept here only so an existing caller
+# does not break; do not add to it -- use ProtParam.
 _DIWV: dict[str, float] = {
     "WW": -14.0, "WC": -14.0, "WM": -14.0, "WH": -14.0, "WY": -14.0,
     "CW": 24.68, "CC": 24.68, "CM": 24.68, "CH": 24.68, "CY": 24.68,
@@ -168,10 +210,12 @@ _DIWV: dict[str, float] = {
     "QH": -6.54, "QG": -6.54, "QL": -6.54, "QK": -6.54, "QR": -6.54,
     "NN": 24.68, "NP": 24.68, "NK": 24.68, "NR": 24.68, "NA": 24.68,
 }
-# (abbreviated — full DIWV table has 400 entries; this provides a working approximation)
+# 25 of 400 entries. See the note above: this is not an approximation of the
+# instability index, it is a different and much smaller number.
 
 
 def _instability(seq: str) -> float:
+    """Superseded by ProteinAnalysis.instability_index(); see the _DIWV note (#63)."""
     seq = seq.upper()
     total = 0.0
     for i in range(len(seq) - 1):
@@ -372,19 +416,39 @@ def protein_properties(sequence: str) -> ProteinPropsResult:
         bad = {c for c in seq if c not in IUPAC_PROTEIN}
         raise HTTPException(400, f"Non-protein characters: {bad}")
 
-    # Molecular weight
-    mw = sum(AA_MW.get(aa, 111.1) for aa in seq) + WATER_MW
-    mw = round(mw, 2)
+    # Four properties now come from Biopython's ProtParam, the reference
+    # implementation, because the local versions disagreed with it on all four
+    # and each disagreement ran in a misleading direction (#63):
+    #
+    #   MW          local used monoisotopic residue masses and labelled them Da
+    #   instability the local DIWV table held 25 of 400 dipeptides and scored
+    #               every missing pair 0.0, so proteins read as stable
+    #   extinction  the cystine term was doubled: 125 is per cystine already
+    #   pI          the local pKa set was described as Bjellqvist and was not
+    #
+    # ProteinAnalysis carries the full 400-entry DIWV table
+    # (Bio.SeqUtils.ProtParamData.DIWV) and the Bjellqvist pKa set.
+    # ProtParam only knows the 20 standard residues, and raises KeyError on the
+    # selenocysteine/pyrrolysine and IUPAC ambiguity codes this endpoint accepts.
+    # Rather than refusing those sequences or quietly returning different numbers
+    # for them, substitute the closest standard analogue and DECLARE it in the
+    # response — aa_composition still reports the real residues.
+    standardised = "".join(NONSTANDARD_ANALOGUE.get(aa, aa) for aa in seq)
+    substituted = {
+        aa: NONSTANDARD_ANALOGUE[aa] for aa in sorted(set(seq)) if aa in NONSTANDARD_ANALOGUE
+    }
 
-    # pI and charge at pH 7
-    pI, charge7 = _calc_pI(seq)
+    analysis = ProteinAnalysis(standardised)
 
-    # Extinction coefficient
-    ext_ox = seq.count("W") * EXT_W + seq.count("Y") * EXT_Y + (seq.count("C") // 2) * EXT_C * 2
-    ext_red = seq.count("W") * EXT_W + seq.count("Y") * EXT_Y
+    mw = round(analysis.molecular_weight(), 2)          # average mass, as "Da" claims
+    pI = round(analysis.isoelectric_point(), 2)
+    ii = round(analysis.instability_index(), 2)
+    ext_red, ext_ox = analysis.molar_extinction_coefficient()
+    ext_red, ext_ox = int(ext_red), int(ext_ox)
 
-    # Instability index
-    ii = _instability(seq)
+    # Charge at pH 7 has no ProtParam equivalent, so it stays local. Kept as it
+    # was rather than silently re-derived from a different pKa set.
+    _pI_local, charge7 = _calc_pI(seq)
 
     # Aliphatic index (Ikai 1980)
     ai = round(
@@ -427,6 +491,7 @@ def protein_properties(sequence: str) -> ProteinPropsResult:
         aa_composition=aa_comp,
         signal_peptide_predicted=sp_predicted,
         signal_peptide_end=sp_end,
+        nonstandard_substituted=substituted,
     )
 
 

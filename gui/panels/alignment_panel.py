@@ -58,8 +58,12 @@ def format_alignment_blocks(a1: str, a2: str, width: int = BLOCK_WIDTH) -> str:
         top += len(chunk1) - chunk1.count("-")
         bottom += len(chunk2) - chunk2.count("-")
 
+        # The match row is padded to the same total width as the sequence rows,
+        # including the trailing coordinate field. Codex pointed out that leaving
+        # it short made "every row in a block is the same width" false, even
+        # though the columns themselves lined up.
         out.append(f"{'Seq1':<{label_w}} {top_start:>{pos_w}} {chunk1} {top:>{pos_w}}")
-        out.append(f"{'':<{label_w}} {'':>{pos_w}} {match}")
+        out.append(f"{'':<{label_w}} {'':>{pos_w}} {match:<{len(chunk1)}} {'':>{pos_w}}")
         out.append(f"{'Seq2':<{label_w}} {bottom_start:>{pos_w}} {chunk2} {bottom:>{pos_w}}")
         out.append("")
 
