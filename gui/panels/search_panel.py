@@ -14,7 +14,7 @@ from PyQt6.QtGui import QColor
 
 from backend.services import NCBIClient, EnsemblClient, UniProtClient, KEGGClient
 from backend.models.sequence import Sequence, MoleculeType
-from ..workers import Worker
+from ..workers import Worker, worker_busy
 
 
 DB_COLORS = {
@@ -119,6 +119,10 @@ class SearchPanel(QWidget):
         if self._cb_kegg.isChecked():
             dbs.append("kegg")
 
+        # Refuse rather than rebind a live QThread, which Qt aborts on (#54).
+        if worker_busy(self, "_worker"):
+            self._status.setText("Already searching — wait for that search to finish.")
+            return
         self._worker = Worker(self._do_search, query, self._species.text().strip(), dbs)
         self._worker.result.connect(self._on_search_done)
         self._worker.error.connect(self._on_search_error)
@@ -235,6 +239,11 @@ class SearchPanel(QWidget):
         self._btn_load.setEnabled(False)
         self._btn_load.setText("Fetching…")
 
+        # Refuse rather than rebind a live QThread, which Qt aborts on (#54).
+        if worker_busy(self, "_fetch_worker"):
+            self._btn_load.setEnabled(True)
+            self._btn_load.setText("Load sequence")
+            return
         self._fetch_worker = Worker(self._fetch_sequence, result)
         self._fetch_worker.result.connect(self._on_fetch_done)
         self._fetch_worker.error.connect(lambda e: (

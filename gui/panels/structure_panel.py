@@ -27,7 +27,7 @@ from PyQt6.QtGui import QColor
 
 from backend.models.structure import StructureRequest, StructureResult, InteractionPointsRequest
 from backend.routers.structure import get_or_predict_structure, interaction_points as compute_interaction_points_endpoint
-from ..workers import Worker
+from ..workers import Worker, worker_busy
 from ..plugins.structure_viewer_launcher import find_structure_viewer
 
 try:
@@ -162,6 +162,11 @@ class StructurePanel(QWidget):
             gene_symbol=self._gene_input.text().strip() or None,
             uniprot_id=self._uniprot_input.text().strip() or None,
         )
+        # Refuse rather than rebind a live QThread, which Qt aborts on (#54).
+        if worker_busy(self, "_worker", "_points_worker"):
+            self._progress.hide()
+            self._badge.setText("Already working — wait for that run to finish.")
+            return
         self._worker = Worker(get_or_predict_structure, req)
         self._worker.result.connect(self._on_predict_done)
         self._worker.error.connect(self._on_predict_error)

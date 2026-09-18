@@ -15,7 +15,7 @@ from PyQt6.QtGui import QColor
 
 from backend.models.crispr import CRISPRDesignRequest, CasType
 from backend.routers.crispr import design_guides
-from ..workers import Worker
+from ..workers import Worker, worker_busy
 
 
 CAS_INFO = {
@@ -144,13 +144,22 @@ class CRISPRPanel(QWidget):
         self._btn_export.setEnabled(False)
 
         cas_str = self._cas_combo.currentText()
+        # guide_length is deliberately NOT passed. The panel has no control for
+        # it, and the router uses each nuclease's canonical length (20 for Cas9,
+        # 23 for Cas12a, 22 for Cas13) unless a caller explicitly asks for one.
+        # Passing 20 here would have silently shortened every Cas12a guide (#64).
         req = CRISPRDesignRequest(
             target_sequence=target,
             cas_type=CasType(cas_str),
-            guide_length=20,
             max_guides=self._max_guides.value(),
             check_off_targets=self._check_off.isChecked(),
         )
+        # Refuse rather than rebind a live QThread, which Qt aborts on (#54).
+        if worker_busy(self, "_worker"):
+            self._progress.hide()
+            self._btn_design.setEnabled(True)
+            self._status.setText("Already designing guides — wait for that run to finish.")
+            return
         self._worker = Worker(design_guides, req)
         self._worker.result.connect(self._on_design_done)
         self._worker.error.connect(self._on_design_error)

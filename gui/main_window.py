@@ -19,6 +19,7 @@ from .panels import (
     SettingsPanel, StructurePanel,
 )
 from .updater import UpdateChecker
+from .workers import worker_busy
 from .update_dialog import UpdateDialog
 from backend.formats import write_fasta, write_genbank
 from backend.models.sequence import Sequence
@@ -304,6 +305,9 @@ class MainWindow(QMainWindow):
 
     def _start_update_check(self) -> None:
         """Fire-and-forget background update check on startup."""
+        # Refuse rather than rebind a live QThread, which Qt aborts on (#54).
+        if worker_busy(self, "_update_checker"):
+            return
         self._update_checker = UpdateChecker()
         self._update_checker.update_available.connect(self._on_update_available)
         # check_failed is intentionally ignored — no UI noise for network issues
@@ -319,6 +323,11 @@ class MainWindow(QMainWindow):
 
     def _manual_update_check(self) -> None:
         """Called from Help → Check for Updates."""
+        # The startup check may still be running; replacing it would drop the
+        # last reference to a live QThread and abort the process (#54).
+        if worker_busy(self, "_update_checker"):
+            self._status.showMessage("An update check is already running…")
+            return
         self._status.showMessage("Checking for updates…")
         checker = UpdateChecker()
 

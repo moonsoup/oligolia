@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QColor
 
 from backend.routers.primers import design_primers, restriction_sites, PrimerDesignRequest, RestrictionRequest
-from ..workers import Worker
+from ..workers import Worker, worker_busy
 
 # Presets stored in user config dir
 _PRESETS_FILE = Path.home() / ".oligolia" / "primer_presets.json"
@@ -318,6 +318,11 @@ class PrimersPanel(QWidget):
             tm_max=self._tm_max.value(),
             max_pairs=10,
         )
+        # Refuse rather than rebind a live QThread, which Qt aborts on (#54).
+        if worker_busy(self, "_worker"):
+            self._pcr_progress.hide()
+            self._pcr_status.setText("Already designing primers — wait for that run to finish.")
+            return
         self._worker = Worker(design_primers, req)
         self._worker.result.connect(self._on_pcr_done)
         self._worker.error.connect(lambda e: (self._pcr_progress.hide(), self._pcr_status.setText(f"Error: {e}")))

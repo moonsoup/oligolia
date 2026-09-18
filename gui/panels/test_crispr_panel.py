@@ -66,3 +66,47 @@ def test_set_target_contains_no_slice_at_all(app: QApplication) -> None:
     fn = ast.parse(src).body[0]
     slices = [n for n in ast.walk(fn) if isinstance(n, ast.Subscript) and isinstance(n.slice, ast.Slice)]
     assert not slices, "set_target must not truncate the target (#64.4)"
+
+
+# --- #64 interaction: the panel must not pin guide_length ---
+
+def test_the_panel_does_not_pass_guide_length(app: QApplication) -> None:
+    """Caught while fixing #54, and it is a real #64 regression.
+
+    The router honours `guide_length` only when a caller explicitly sets it, and
+    otherwise uses each nuclease's canonical length. The panel was passing
+    `guide_length=20` unconditionally, so after #64 every Cas12a guide designed
+    from the GUI would have been 20 nt instead of 23 — a silent shortening that
+    no backend test could see, because the backend was being asked for 20.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    src = textwrap.dedent(inspect.getsource(CRISPRPanel._run_design))
+    fn = ast.parse(src).body[0]
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
+                and node.func.id == "CRISPRDesignRequest":
+            names = {kw.arg for kw in node.keywords}
+            assert "guide_length" not in names, (
+                "the panel must not pin guide_length; the router picks the "
+                "nuclease's canonical length (#64)"
+            )
+            break
+    else:
+        raise AssertionError("CRISPRDesignRequest(...) not found in _run_design")
+
+
+def test_cas12a_from_the_panels_request_gets_23nt_guides(app: QApplication) -> None:
+    """End to end through the router, with the panel's own request shape."""
+    from backend.models.crispr import CasType, CRISPRDesignRequest
+    from backend.routers.crispr import design_guides
+
+    target = "TTTA" + "ACGTGGCATC" * 10
+    req = CRISPRDesignRequest(
+        target_sequence=target, cas_type=CasType.CAS12A, max_guides=10,
+        check_off_targets=False,
+    )
+    for g in design_guides(req).guides:
+        assert len(g.sequence) == 23, g.sequence

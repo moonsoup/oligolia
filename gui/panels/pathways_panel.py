@@ -14,7 +14,7 @@ from PyQt6.QtGui import QColor, QDesktopServices
 from PyQt6.QtCore import QUrl
 
 from backend.services import ReactomeClient, KEGGClient, STRINGClient
-from ..workers import Worker
+from ..workers import Worker, worker_busy
 
 
 class PathwaysPanel(QWidget):
@@ -121,6 +121,11 @@ class PathwaysPanel(QWidget):
         self._status.setText(f"Running Reactome enrichment for {len(genes)} genes…")
         self._reactome_table.setRowCount(0)
         species = self._species.currentText()
+        # Refuse rather than rebind a live QThread, which Qt aborts on (#54).
+        if worker_busy(self, "_worker"):
+            self._btn_reactome.setEnabled(True)
+            self._status.setText("Already fetching — wait for that request to finish.")
+            return
         self._worker = Worker(self._fetch_reactome, genes, species)
         self._worker.result.connect(self._on_reactome_done)
         self._worker.error.connect(lambda e: (
@@ -168,6 +173,11 @@ class PathwaysPanel(QWidget):
         self._btn_string.setEnabled(False)
         self._status.setText(f"Fetching STRING interactions for {len(genes)} proteins…")
         self._string_table.setRowCount(0)
+        # Refuse rather than rebind a live QThread, which Qt aborts on (#54).
+        if worker_busy(self, "_worker"):
+            self._btn_string.setEnabled(True)
+            self._status.setText("Already fetching — wait for that request to finish.")
+            return
         self._worker = Worker(self._fetch_string, genes)
         self._worker.result.connect(self._on_string_done)
         self._worker.error.connect(lambda e: (

@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor
 from Bio import Align
-from ..workers import Worker
+from ..workers import Worker, worker_busy
 
 
 #: Columns per block. 60 is the ClustalW/BLAST convention and fits comfortably
@@ -248,6 +248,11 @@ class AlignmentPanel(QWidget):
         self._msa_progress.show()
         self._msa_status.setText(f"Aligning {len(seqs)} sequences…")
 
+        # Refuse rather than rebind a live QThread, which Qt aborts on (#54).
+        if worker_busy(self, "_msa_worker"):
+            self._msa_progress.hide()
+            self._msa_status.setText("Already aligning — wait for that run to finish.")
+            return
         self._msa_worker = Worker(self._do_msa, seqs)
         self._msa_worker.result.connect(self._on_msa_done)
         self._msa_worker.error.connect(lambda e: (
