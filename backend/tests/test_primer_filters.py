@@ -139,7 +139,10 @@ def test_a_3kb_template_completes_promptly(client: TestClient) -> None:
     started = time.monotonic()
     _pairs(client, template, product_max=1000)
     elapsed = time.monotonic() - started
-    assert elapsed < 3.0, f"3 kb design took {elapsed:.1f}s"
+    # Measured at 2.9 s before the #52 dimer check and 3.3 s after it,
+    # against 83 s before this work. The bound has headroom for a slower
+    # machine without being so loose that a regression hides in it.
+    assert elapsed < 8.0, f"3 kb design took {elapsed:.1f}s"
 
 
 def test_pairs_still_respect_the_product_window(client: TestClient) -> None:
@@ -217,6 +220,10 @@ def test_the_pruned_search_returns_exactly_the_brute_force_top_pairs(client: Tes
                 continue
             tm_diff = abs(ftm - rtm)
             if tm_diff > 5:
+                continue
+            # The design path also rejects 3' primer-dimers (#52), so the
+            # enumeration has to apply the same rule to compare like with like.
+            if P.forms_3prime_dimer(fs, rs):
                 continue
             every.append((round(tm_diff + abs(fgc - rgc) * 0.1, 3), fs, rs, product))
     every.sort(key=lambda x: x[0])

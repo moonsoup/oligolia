@@ -315,24 +315,29 @@ def design_primers(req: PrimerDesignRequest) -> list[PrimerPair]:
             if rev.position <= f_pos:
                 continue
 
-            # A pair property, so it cannot be checked when the candidates are
-            # built (#52). Placed after the cheap numeric rejections so it runs
-            # only on pairs that are otherwise viable.
-            if forms_3prime_dimer(fwd.sequence, rev.sequence):
-                continue
-
             gc_diff = f_gc - rev.gc_content
             if gc_diff < 0.0:
                 gc_diff = -gc_diff
             penalty = tm_diff + gc_diff * 0.1
 
+            full = len(best) >= req.max_pairs
+            if full and penalty >= -best[0][0]:
+                continue
+
+            # A pair property, so it cannot be checked when the candidates are
+            # built (#52). Deliberately LAST: it is string work, and by this point
+            # the pair is both viable and good enough to be kept, so it runs on a
+            # few hundred pairs rather than on millions.
+            if forms_3prime_dimer(fwd.sequence, rev.sequence):
+                continue
+
             counter += 1
             entry = (-penalty, counter, fwd, rev, rev.position + rev.length - f_pos)
-            if len(best) < req.max_pairs:
+            if not full:
                 heapq.heappush(best, entry)
                 if len(best) == req.max_pairs:
                     limit = min(5.0, -best[0][0])
-            elif penalty < -best[0][0]:
+            else:
                 heapq.heapreplace(best, entry)
                 limit = min(5.0, -best[0][0])
 
