@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from Bio import Restriction
 from Bio.Seq import Seq
+from Bio.SeqUtils import MeltingTemp
 
 router = APIRouter(prefix="/primers", tags=["primers"])
 
@@ -45,14 +46,61 @@ class RestrictionSite(BaseModel):
     count: int
 
 
-def _tm_nearest_neighbor(seq: str) -> float:
-    """Wallace rule Tm approximation (for short primers, NN is overkill)."""
+#: Conditions the reported Tm is computed under. Spelled out because a melting
+#: temperature is not a property of a sequence alone: Tm_NN takes a
+#: nearest-neighbour table, both strand concentrations, four salt species and a
+#: choice of salt correction, and "Tm" without them does not identify a number.
+#: These are Biopython's documented defaults, which is what the #50 audit compared
+#: against. Changing any of them changes every Tm the app reports, so change them
+#: here, visibly, and update backend/tests/test_oracle_tm.py in the same commit.
+TM_CONDITIONS = {
+    "nn_table": MeltingTemp.DNA_NN3,  # Allawi & SantaLucia 1997 ("unified")
+    "saltcorr": 5,                    # Owczarzy et al. 2004
+    "dnac1": 25,                      # nM, primer strand
+    "dnac2": 25,                      # nM, template strand
+    "Na": 50,                         # mM
+    "K": 0,
+    "Tris": 0,
+    "Mg": 0,
+    "dNTPs": 0,
+}
+
+
+def _tm_wallace(seq: str) -> float:
+    """The original approximation, kept available and no longer misnamed.
+
+    This is what `_tm_nearest_neighbor` used to compute: the 1989 Wallace rule
+    (2*AT + 4*GC) below 14 nt, and the Marmur/Chester GC-percentage formula at or
+    above it. Both are functions of length and GC *count* only, so they cannot see
+    adjacent-base stacking — two primers of equal length and GC count get the same
+    answer whatever order the bases are in.
+
+    Retained because it is cheap and is a reasonable pre-filter, and because
+    removing a function is not this project's call to make unilaterally. It is not
+    what the app reports (#50).
+    """
     seq = seq.upper()
     gc = seq.count("G") + seq.count("C")
     at = seq.count("A") + seq.count("T")
     if len(seq) < 14:
         return 2 * at + 4 * gc
     return 64.9 + 41 * (gc - 16.4) / (at + gc)
+
+
+def _tm_nearest_neighbor(seq: str) -> float:
+    """Nearest-neighbour melting temperature, as the name says.
+
+    Delegates to Biopython's `Tm_NN` under the pinned `TM_CONDITIONS`. An
+    independent audit of the previous Wallace-rule implementation found 97 of 120
+    primers from real templates more than 3 degC out, worst case +9.0 degC, and
+    systematically worse on GC-rich sequence — which is where an annealing
+    temperature set from this number does real damage (#50).
+    """
+    seq = seq.upper()
+    if len(seq) < 2:
+        # Tm_NN needs at least one neighbour pair; nothing thermodynamic to say.
+        return _tm_wallace(seq)
+    return round(MeltingTemp.Tm_NN(seq, **TM_CONDITIONS), 2)
 
 
 def _gc(seq: str) -> float:
