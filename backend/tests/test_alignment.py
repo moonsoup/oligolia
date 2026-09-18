@@ -114,3 +114,38 @@ def test_msa_minimum_sequences(client: TestClient) -> None:
         "sequences": [{"id": "only_one", "seq": "ATCG"}]
     })
     assert r.status_code == 400
+
+
+# --- #56: pairwise alignment must not materialise every co-optimal alignment ---
+
+import random  # noqa: E402
+
+
+def _unrelated(n: int, seed: int) -> str:
+    """Random DNA. Two unrelated sequences of this length have astronomically many
+    co-optimal alignments, which is exactly the input that broke the endpoint."""
+    rng = random.Random(seed)
+    return "".join(rng.choice("ACGT") for _ in range(n))
+
+
+def test_pairwise_on_unrelated_500nt_does_not_exhaust_memory(client: TestClient) -> None:
+    """#56: `list(aligner.align(...))` materialised 4.4e18 alignments -> MemoryError.
+
+    The code only ever uses alignments[0], so nothing needed the rest. This is the
+    ordinary case the endpoint is for: two sequences that are not closely related.
+    """
+    a, b = _unrelated(500, 1), _unrelated(500, 2)
+    r = client.post("/alignment/pairwise", json={"seq1": a, "seq2": b, "mode": "global"})
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert len(data["aligned_seq1"]) >= 500
+    assert len(data["aligned_seq1"]) == len(data["aligned_seq2"])
+    assert 0 <= data["identity"] <= 100
+
+
+def test_pairwise_on_2kb_does_not_overflow(client: TestClient) -> None:
+    """#56: 2kb vs 2kb raised OverflowError counting the alignments."""
+    a, b = _unrelated(2000, 3), _unrelated(2000, 4)
+    r = client.post("/alignment/pairwise", json={"seq1": a, "seq2": b, "mode": "global"})
+    assert r.status_code == 200, r.text
+    assert r.json()["alignment_length"] >= 2000

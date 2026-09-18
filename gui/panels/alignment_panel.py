@@ -134,11 +134,15 @@ class AlignmentPanel(QWidget):
         aligner.extend_gap_score = -0.5
 
         try:
-            alignments = list(aligner.align(s1, s2))
-            if not alignments:
+            # Lazily take the first (optimal) alignment. Never list() the result and
+            # never len() it: two unrelated 500-nt sequences already have more
+            # co-optimal alignments than fit in an int64, which showed up here as a
+            # blank "Alignment error: " (#56).
+            try:
+                best = next(iter(aligner.align(s1, s2)))
+            except StopIteration:
                 self._pair_result.setPlainText("No alignment found.")
                 return
-            best = alignments[0]
             counts = best.counts()
             aln_len = best.length
 

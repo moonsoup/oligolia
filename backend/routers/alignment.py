@@ -48,11 +48,14 @@ def pairwise_align(req: PairwiseRequest) -> PairwiseResult:
     aligner.open_gap_score = req.open_gap_score
     aligner.extend_gap_score = req.extend_gap_score
 
-    alignments = list(aligner.align(req.seq1, req.seq2))
-    if not alignments:
-        raise HTTPException(422, "No alignment found")
-
-    best = alignments[0]
+    # Take the first (optimal) alignment lazily. Never materialise the set and never
+    # call len() on it: two unrelated 500-nt sequences already have more co-optimal
+    # alignments than fit in an int64, so `list(...)` raised OverflowError/MemoryError
+    # on ordinary input while only alignments[0] was ever used (#56).
+    try:
+        best = next(iter(aligner.align(req.seq1, req.seq2)))
+    except StopIteration:
+        raise HTTPException(422, "No alignment found") from None
     counts = best.counts()
 
     # Extract gapped sequences from FASTA format output
@@ -61,7 +64,7 @@ def pairwise_align(req: PairwiseRequest) -> PairwiseResult:
     aligned1 = gapped_seqs[0] if len(gapped_seqs) >= 1 else req.seq1
     aligned2 = gapped_seqs[1] if len(gapped_seqs) >= 2 else req.seq2
 
-    aln_len = len(aligned1)  # use gapped sequence length; Alignment.length removed in Biopython 1.82+
+    aln_len = len(aligned1)  # gapped sequence length (equals best.length for these modes)
     identity = counts.identities / aln_len if aln_len else 0
     similarity = (counts.identities + counts.mismatches) / aln_len if aln_len else 0
 
