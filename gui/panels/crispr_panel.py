@@ -112,9 +112,25 @@ class CRISPRPanel(QWidget):
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         layout.addWidget(self._table)
 
+    #: Above this, say so instead of quietly shortening the search space.
+    LONG_TARGET_NT = 2000
+
     def set_target(self, seq: str) -> None:
-        """Pre-fill target from loaded sequence."""
-        self._target_input.setPlainText(seq[:2000])  # limit to 2 kbp for display
+        """Pre-fill target from the loaded sequence.
+
+        This used to do `seq[:2000]` "for display", which silently dropped every
+        site beyond 2 kb from the search and told the user nothing — a 5 kb insert
+        was designed against its first 2 kb (#64.4). The whole sequence is loaded
+        now; long ones get a note on the status line rather than a haircut.
+        """
+        self._target_input.setPlainText(seq)
+        if len(seq) > self.LONG_TARGET_NT:
+            self._status.setText(
+                f"Target is {len(seq):,} nt — the whole sequence will be searched. "
+                "Trim the box if you only want part of it."
+            )
+        else:
+            self._status.setText("")
 
     def _run_design(self) -> None:
         target = self._target_input.toPlainText().strip().upper().replace(" ", "").replace("\n", "")

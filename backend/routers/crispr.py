@@ -52,15 +52,51 @@ def _reverse_complement(seq: str) -> str:
     return seq.translate(comp)[::-1]
 
 
+#: The guide length each nuclease is normally used with, applied when the caller
+#: does not ask for a specific one.
+CANONICAL_GUIDE_LENGTH = {
+    CasType.CAS9: 20,
+    CasType.CAS9_HF: 20,
+    CasType.CAS12A: 23,
+    CasType.CAS13: 22,
+}
+
+#: How many bases of PAM have to fit alongside the guide. Cas13 targets RNA and
+#: has no PAM requirement.
+PAM_LENGTH = {
+    CasType.CAS9: 3,       # NGG, 3' of the protospacer
+    CasType.CAS9_HF: 3,
+    CasType.CAS12A: 4,     # TTTV, 5' of the protospacer
+    CasType.CAS13: 0,
+}
+
+
 @router.post("/design", response_model=CRISPRDesignResponse)
 def design_guides(req: CRISPRDesignRequest) -> CRISPRDesignResponse:
     target = req.target_sequence.upper().replace(" ", "").replace("\n", "")
     if not all(c in "ACGTN" for c in target):
         raise HTTPException(400, "Target sequence must be DNA (ACGTN only)")
-    if len(target) < req.guide_length + 3:
-        raise HTTPException(400, f"Target too short (need ≥{req.guide_length + 3} nt)")
-
     cas = req.cas_type
+
+    # `guide_length` was ignored by every branch — Cas9 hardcoded 20, Cas12a 23,
+    # Cas13 22 (#64.3). It is honoured now when the caller actually sets it, and
+    # otherwise each nuclease keeps its canonical length, so existing callers that
+    # never passed it (and relied on 23 for Cas12a) are unaffected by the default
+    # of 20 on the request model.
+    guide_length = (
+        req.guide_length
+        if "guide_length" in req.model_fields_set
+        else CANONICAL_GUIDE_LENGTH[cas]
+    )
+
+    # The PAM is part of what has to fit, and it differs per nuclease: NGG sits 3'
+    # of the protospacer, TTTV sits 5' of it, and Cas13 has none. The old guard
+    # always demanded guide_length + 3, which rejected a legitimate 22 nt Cas13
+    # target as "too short".
+    needed = guide_length + PAM_LENGTH[cas]
+    if len(target) < needed:
+        raise HTTPException(400, f"Target too short (need ≥{needed} nt for {cas.value})")
+
     guides: list[GuideRNA] = []
 
     if cas in (CasType.CAS9, CasType.CAS9_HF):
@@ -69,7 +105,7 @@ def design_guides(req: CRISPRDesignRequest) -> CRISPRDesignResponse:
         # last base, so every guide was shifted one base along the target and the
         # real protospacer was never returned -- with the mismatch landing in the
         # PAM-proximal seed, where SpCas9 is least tolerant (#53).
-        for m in re.finditer(r"(?=(.{20}).GG)", target):
+        for m in re.finditer(rf"(?=(.{{{guide_length}}}).GG)", target):
             guide_seq = m.group(1)
             pos = m.start()
             gc = _gc_content(guide_seq)
@@ -84,9 +120,10 @@ def design_guides(req: CRISPRDesignRequest) -> CRISPRDesignResponse:
             ))
         # Reverse strand
         rc_target = _reverse_complement(target)
-        for m in re.finditer(r"(?=(.{20}).GG)", rc_target):
+        for m in re.finditer(rf"(?=(.{{{guide_length}}}).GG)", rc_target):
             guide_seq = m.group(1)
-            pos = len(target) - m.start() - 20
+            # rc index s spans rc[s : s+L], which is target[len-s-L : len-s].
+            pos = len(target) - m.start() - guide_length
             gc = _gc_content(guide_seq)
             score = _doench_rule_set1_score(guide_seq)
             guides.append(GuideRNA(
@@ -99,8 +136,12 @@ def design_guides(req: CRISPRDesignRequest) -> CRISPRDesignResponse:
             ))
 
     elif cas == CasType.CAS12A:
-        # PAM is 5'-TTTV-3' followed by 23 nt guide
-        for m in re.finditer(r"(?=TTT[ACG](.{23}))", target):
+        # PAM is 5'-TTTV-3' immediately followed by the guide. Both strands are
+        # scanned: only the + strand was, so a target whose TTTV sites all sit on
+        # the minus strand returned zero candidates rather than the real ones
+        # (#64.2).
+        pam_re = rf"(?=TTT[ACG](.{{{guide_length}}}))"
+        for m in re.finditer(pam_re, target):
             guide_seq = m.group(1)
             pos = m.start() + 4
             gc = _gc_content(guide_seq)
@@ -112,11 +153,28 @@ def design_guides(req: CRISPRDesignRequest) -> CRISPRDesignResponse:
                 gc_content=round(gc, 1),
                 on_target_score=round(0.5 + (0.1 if 40 <= gc <= 70 else -0.1), 3),
             ))
+        rc_target = _reverse_complement(target)
+        for m in re.finditer(pam_re, rc_target):
+            guide_seq = m.group(1)
+            # The guide occupies rc[s+4 : s+4+L]; map that back to the + strand.
+            pos = len(target) - (m.start() + 4) - guide_length
+            gc = _gc_content(guide_seq)
+            guides.append(GuideRNA(
+                sequence=guide_seq,
+                pam="TTTV",
+                position=pos,
+                strand="-",
+                gc_content=round(gc, 1),
+                on_target_score=round(0.5 + (0.1 if 40 <= gc <= 70 else -0.1), 3),
+            ))
 
     elif cas == CasType.CAS13:
-        # CAS13 targets RNA; every 22 nt window is a candidate
-        for i in range(0, len(target) - 22, 1):
-            guide_seq = target[i:i+22]
+        # Cas13 targets RNA, so every window of the given sense strand is a
+        # candidate and there is no second strand to scan — the crRNA is
+        # complementary to this transcript, not to its genomic reverse complement.
+        # `range(0, len - L)` dropped the last window (#64.1).
+        for i in range(0, len(target) - guide_length + 1):
+            guide_seq = target[i:i + guide_length]
             gc = _gc_content(guide_seq)
             guides.append(GuideRNA(
                 sequence=guide_seq,
