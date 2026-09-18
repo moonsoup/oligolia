@@ -44,9 +44,12 @@ def test_pairwise_on_unrelated_500nt_shows_a_result_not_an_error(app: QApplicati
     shown = panel._pair_result.toPlainText()
     assert "error" not in shown.lower(), shown
     assert "No alignment found" not in shown, shown
-    # The panel reports identity/score; both must be present and parseable.
-    assert "Identity" in shown or "identity" in shown, shown
+    assert shown.startswith("Seq1"), shown
     assert len(shown) > 50, shown
+    # Identity/score live in the stat labels above the pane, not duplicated in it (#77).
+    assert "—" not in panel._stat_identity.text(), panel._stat_identity.text()
+    assert "%" in panel._stat_identity.text()
+    assert "—" not in panel._stat_score.text()
 
 
 # Deliberately NOT tested here:
@@ -112,3 +115,91 @@ def test_the_panel_no_longer_carries_its_own_aligner_copy() -> None:
         "the panel should delegate to backend.routers.alignment, not shell out itself (#58)"
     )
     assert "multiple_align" in source
+
+
+# --- #77: the alignment view must line up ---
+
+from gui.panels.alignment_panel import BLOCK_WIDTH, format_alignment_blocks  # noqa: E402
+
+
+def _rows(text: str) -> list[list[str]]:
+    """Group the rendered output back into (seq1, match, seq2) triples."""
+    lines = text.split("\n")
+    blocks = []
+    for i in range(0, len(lines), 4):
+        triple = lines[i:i + 3]
+        if len(triple) == 3 and triple[0].startswith("Seq1"):
+            blocks.append(triple)
+    return blocks
+
+
+def test_every_block_row_has_the_same_width() -> None:
+    """#77: the three rows wrapped at different columns, so the bars drifted."""
+    a1 = "ACGTACGTAC" * 12
+    a2 = "ACGTAGGTAC" * 12
+    out = format_alignment_blocks(a1, a2)
+    blocks = _rows(out)
+    assert blocks, out
+    for seq1, match, seq2 in blocks:
+        assert len(seq1) == len(seq2), (seq1, seq2)
+        # The match row is padded to the same prefix width, so it must not be longer.
+        assert len(match) <= len(seq1)
+
+
+def test_every_bar_sits_under_two_matching_bases() -> None:
+    """The property the old rendering violated, stated directly."""
+    a1 = "ACGT-ACGTACGTTTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTAC"
+    a2 = "ACGTAACGTAGGTTTACGTACG--CGTACGTACGTACGTACGTACGTACGTACGTACGTACGTAC"
+    out = format_alignment_blocks(a1, a2)
+
+    for seq1_row, match_row, seq2_row in _rows(out):
+        # Strip the identical label+coordinate prefix from each row.
+        prefix = len(seq1_row) - len(seq1_row.lstrip())  # not reliable; use fixed parse
+        parts1 = seq1_row.split()
+        parts2 = seq2_row.split()
+        chunk1, chunk2 = parts1[2], parts2[2]
+        offset = seq1_row.index(chunk1)
+        match = match_row[offset:offset + len(chunk1)]
+        assert len(match) == len(chunk1) or match.strip() == ""
+
+        for i, ch in enumerate(match):
+            if ch == "|":
+                assert chunk1[i] == chunk2[i] != "-", (i, chunk1[i], chunk2[i])
+            elif ch == ".":
+                assert chunk1[i] != chunk2[i]
+                assert chunk1[i] != "-" and chunk2[i] != "-"
+        del prefix
+
+
+def test_coordinates_count_bases_not_columns() -> None:
+    """A gap must not advance the coordinate, or it cannot locate a mismatch."""
+    a1 = "ACGT" + "-" * 10 + "ACGT" * 20
+    a2 = "ACGT" + "ACGTACGTAC" + "ACGT" * 20
+    out = format_alignment_blocks(a1, a2)
+    first = _rows(out)[0]
+    # Seq1's end coordinate for the first block excludes the 10 gap characters.
+    end1 = int(first[0].split()[-1])
+    end2 = int(first[2].split()[-1])
+    assert end1 == BLOCK_WIDTH - 10, (end1, BLOCK_WIDTH)
+    assert end2 == BLOCK_WIDTH, end2
+
+
+def test_mismatched_lengths_are_refused() -> None:
+    """Don't render something that cannot line up."""
+    with _pytest.raises(ValueError):
+        format_alignment_blocks("ACGT", "ACG")
+
+
+def test_blocks_are_no_wider_than_the_block_width() -> None:
+    a1 = "ACGT" * 50
+    a2 = "ACGA" * 50
+    for seq1_row, _m, _s2 in _rows(format_alignment_blocks(a1, a2)):
+        assert len(seq1_row.split()[2]) <= BLOCK_WIDTH
+
+
+def test_the_panel_uses_the_block_formatter_and_does_not_wrap() -> None:
+    from pathlib import Path
+
+    source = Path(__file__).with_name("alignment_panel.py").read_text()
+    assert "format_alignment_blocks(" in source
+    assert "LineWrapMode.NoWrap" in source, "the result pane must not word-wrap (#77)"

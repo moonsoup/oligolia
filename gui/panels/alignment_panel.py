@@ -16,6 +16,56 @@ from Bio import Align
 from ..workers import Worker
 
 
+#: Columns per block. 60 is the ClustalW/BLAST convention and fits comfortably
+#: without horizontal scrolling.
+BLOCK_WIDTH = 60
+
+
+def format_alignment_blocks(a1: str, a2: str, width: int = BLOCK_WIDTH) -> str:
+    """Render a pairwise alignment as fixed-width blocks with coordinates.
+
+    The previous rendering put the whole alignment on three very long lines and
+    left QTextEdit to word-wrap them. The match line contains spaces (wherever
+    either side has a gap) while the sequence lines contain none, so the three
+    wrapped at different columns and the bars stopped lining up with the bases
+    they describe — correct numbers over a misleading picture (#77).
+
+    Blocks remove the question entirely: every row in a block is exactly `width`
+    characters, so the columns cannot drift however the widget is sized.
+
+    Coordinates count bases, not columns, so a gap does not advance them — which
+    is what a user needs in order to find a mismatch in the original sequence.
+    """
+    if len(a1) != len(a2):
+        # Shouldn't happen for an aligned pair; don't pretend it lines up.
+        raise ValueError(f"aligned sequences differ in length: {len(a1)} vs {len(a2)}")
+
+    label_w = 4
+    pos_w = max(len(str(len(a1))), 5)
+    out: list[str] = []
+    top = bottom = 0  # bases consumed so far, excluding gaps
+
+    for start in range(0, len(a1), width):
+        chunk1 = a1[start:start + width]
+        chunk2 = a2[start:start + width]
+        match = "".join(
+            "|" if x == y and x != "-" else "." if (x != "-" and y != "-") else " "
+            for x, y in zip(chunk1, chunk2)
+        )
+
+        top_start = top + 1
+        bottom_start = bottom + 1
+        top += len(chunk1) - chunk1.count("-")
+        bottom += len(chunk2) - chunk2.count("-")
+
+        out.append(f"{'Seq1':<{label_w}} {top_start:>{pos_w}} {chunk1} {top:>{pos_w}}")
+        out.append(f"{'':<{label_w}} {'':>{pos_w}} {match}")
+        out.append(f"{'Seq2':<{label_w}} {bottom_start:>{pos_w}} {chunk2} {bottom:>{pos_w}}")
+        out.append("")
+
+    return "\n".join(out).rstrip("\n")
+
+
 class AlignmentPanel(QWidget):
     def __init__(self) -> None:
         super().__init__()
@@ -74,6 +124,8 @@ class AlignmentPanel(QWidget):
 
         self._pair_result = QTextEdit()
         self._pair_result.setReadOnly(True)
+        # Blocks are already fixed-width; wrapping them would undo that (#77).
+        self._pair_result.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self._pair_result.setFont(QFont("JetBrains Mono", 11))
         pair_layout.addWidget(self._pair_result)
 
@@ -89,7 +141,7 @@ class AlignmentPanel(QWidget):
         self._msa_input.setFont(QFont("JetBrains Mono", 11))
         msa_layout.addWidget(self._msa_input)
 
-        btn_msa = QPushButton("Run MSA (MUSCLE or fallback)")
+        btn_msa = QPushButton("Run MSA (requires MUSCLE)")
         btn_msa.setObjectName("primary")
         btn_msa.clicked.connect(self._run_msa)
         msa_layout.addWidget(btn_msa)
@@ -157,13 +209,7 @@ class AlignmentPanel(QWidget):
             self._stat_gaps.setText(f"Gaps: {counts.gaps}")
             self._stat_len.setText(f"Length: {aln_len}")
 
-            # Build visual alignment with match line
-            match_line = "".join(
-                "|" if a == b else "." if (a != "-" and b != "-") else " "
-                for a, b in zip(a1, a2)
-            )
-            display = f"Seq1  {a1}\n      {match_line}\nSeq2  {a2}\n\nIdentity: {identity:.1f}% | Score: {best.score:.1f} | Gaps: {counts.gaps}"
-            self._pair_result.setPlainText(display)
+            self._pair_result.setPlainText(format_alignment_blocks(a1, a2))
 
         except Exception as e:
             self._pair_result.setPlainText(f"Alignment error: {e}")
