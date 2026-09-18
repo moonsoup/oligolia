@@ -24,7 +24,11 @@ src-tauri/target/
 **/__pycache__/
 dist/
 build/work/
-.claude/qa/
+# The QA pipeline itself is tracked: CLAUDE.md names it as the remote dev loop's
+# DISCOVER step, and the loop clones main (#69). Only its generated artifacts
+# are ignored.
+.claude/qa/corpus/
+.claude/qa/runs/
 .claude/agent_comms.json
 
 # playtest human-mode recordings (lib/qt_recording.py, specialties/genetics.py)

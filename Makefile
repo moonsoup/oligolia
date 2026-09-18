@@ -76,7 +76,7 @@ test: | $(PYTHON)
 	cd backend && .venv/bin/python -m pytest tests/ -q
 
 lint: | $(PYTHON)
-	backend/.venv/bin/ruff check backend/ gui/ oligolia.py
+	backend/.venv/bin/ruff check backend/ gui/ oligolia.py .claude/qa/
 
 gui-test: | $(PYTHON)
 	QT_QPA_PLATFORM=offscreen backend/.venv/bin/python -m pytest gui/ -q

@@ -39,7 +39,7 @@ jobs:
             -r backend/requirements.txt PyQt6 Pillow ruff
 
       - name: Lint
-        run: backend/.venv/bin/ruff check backend/ gui/ oligolia.py
+        run: backend/.venv/bin/ruff check backend/ gui/ oligolia.py .claude/qa/
 
       - name: Backend tests
         working-directory: backend
