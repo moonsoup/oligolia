@@ -31,12 +31,17 @@ def _to_sequence(r: SeqRecord) -> Sequence:
         try:
             start = int(feat.location.start)
             end = int(feat.location.end)
+            # Every interval, in file order. A CompoundLocation reports each part;
+            # a simple FeatureLocation reports itself as a single part. Reading
+            # only start/end collapsed every join() to its outer bounds (#57).
+            parts = [(int(p.start), int(p.end)) for p in feat.location.parts]
         except Exception:
             continue
         annotations.append(Annotation(
             feature_type=feat.type,
             start=start,
             end=end,
+            parts=parts or [(start, end)],
             strand=_strand(feat.location.strand),
             qualifiers={k: (v[0] if isinstance(v, list) and len(v) == 1 else v)
                         for k, v in feat.qualifiers.items()},
@@ -73,7 +78,7 @@ def read_embl(source: str | TextIO | BinaryIO) -> list[Sequence]:
 
 def write_genbank(sequences: list[Sequence]) -> str:
     from Bio.Seq import Seq
-    from Bio.SeqFeature import SeqFeature, FeatureLocation
+    from Bio.SeqFeature import CompoundLocation, FeatureLocation, SeqFeature
     records = []
     for s in sequences:
         seq = Seq(s.seq)
@@ -82,10 +87,23 @@ def write_genbank(sequences: list[Sequence]) -> str:
         r.annotations["topology"] = "circular" if s.is_circular else "linear"
         for ann in s.annotations:
             strand_val = 1 if ann.strand == Strand.PLUS else -1 if ann.strand == Strand.MINUS else 0
+
+            # Rebuild the real location. More than one part means a join(); the
+            # old writer always emitted a single FeatureLocation over the outer
+            # bounds, which is the export half of #57.
+            parts = ann.parts or [(ann.start, ann.end)]
+            locs = [FeatureLocation(a, b, strand=strand_val) for a, b in parts]
+            location = locs[0] if len(locs) == 1 else CompoundLocation(locs)
+
             feat = SeqFeature(
-                FeatureLocation(ann.start, ann.end, strand=strand_val),
+                location,
                 type=ann.feature_type,
-                qualifiers={k: [str(v)] for k, v in ann.qualifiers.items()},
+                # A list qualifier stays a list: `[str(v)]` turned two /note
+                # entries into one /note="['first', 'second']" (#57).
+                qualifiers={
+                    k: [str(x) for x in v] if isinstance(v, (list, tuple)) else [str(v)]
+                    for k, v in ann.qualifiers.items()
+                },
             )
             r.features.append(feat)
         records.append(r)

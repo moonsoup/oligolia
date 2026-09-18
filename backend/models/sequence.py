@@ -18,9 +18,22 @@ class Strand(str, Enum):
 
 class Annotation(BaseModel):
     feature_type: str
+    #: Outer bounds, 0-based half-open. For a spliced or origin-spanning feature
+    #: these are the min/max across `parts`, which is what every existing
+    #: consumer (plasmid map, feature table, GUI) already reads — so their
+    #: meaning is unchanged.
     start: int
     end: int
     strand: Strand = Strand.PLUS
+    #: Every interval the feature actually occupies, in file order. A simple
+    #: feature has exactly one part equal to (start, end); a GenBank
+    #: `join(5..10,30..40)` has two.
+    #:
+    #: Added for #57: keeping only start/end collapsed every join to its outer
+    #: bounds, so an intron was swallowed and `join(91..100,1..20)` on a 100 bp
+    #: circular record loaded as the whole plasmid — which the plasmid map then
+    #: drew as a full circle.
+    parts: list[tuple[int, int]] = Field(default_factory=list)
     qualifiers: dict[str, Any] = Field(default_factory=dict)
 
 

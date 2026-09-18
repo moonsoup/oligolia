@@ -191,6 +191,18 @@ class PlasmidMapWidget(QWidget):
         painter.drawText(size_rect, Qt.AlignmentFlag.AlignCenter, f"{self._length:,} bp · {topo}")
         painter.end()
 
+    def arc_spans(self, ann) -> list[tuple[int, int]]:
+        """The (start_bp, span_bp) arcs this feature actually occupies.
+
+        One entry per part, so a spliced feature draws its exons and not the
+        intron between them, and an origin-spanning join draws two arcs rather
+        than one that happens to cover the whole plasmid (#57).
+
+        Pure and free of Qt so it can be tested without a painter.
+        """
+        parts = list(getattr(ann, "parts", None) or [(ann.start, ann.end)])
+        return [(int(a), max(int(b) - int(a), 1)) for a, b in parts]
+
     def _draw_features(self, painter: QPainter, cx: float, cy: float, radius: float) -> None:
         """Draw each annotation as a colored arc + strand arrowhead + label."""
         label_font = QFont("Inter", 8)
@@ -202,20 +214,25 @@ class PlasmidMapWidget(QWidget):
 
             # Arc: Qt angles are 1/16 deg, 0 at 3 o'clock, CCW positive. Our bp 0
             # is at 12 o'clock increasing clockwise, so map bp p -> 90 - 360*p/L.
-            span_bp = max(ann.end - ann.start, 1)
-            start_angle = (90.0 - 360.0 * ann.start / self._length) * 16
-            span_angle = -(360.0 * span_bp / self._length) * 16
+            #
+            # One arc PER PART. A spliced or origin-spanning feature used to be
+            # drawn as a single arc over its outer bounds, so join(91..100,1..20)
+            # on a 100 bp plasmid became a full circle (#57).
             rect = QRectF(cx - r, cy - r, 2 * r, 2 * r)
-            # Selection glow (issue #26): a wide translucent halo under arcs that
-            # overlap the current sequence-view selection.
-            if self._overlaps_highlight(ann):
-                painter.setPen(QPen(QColor(250, 204, 21, 160), self._LANE_WIDTH + 8,
-                                    Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap))
+            glow = self._overlaps_highlight(ann)
+            for start_bp, span_bp in self.arc_spans(ann):
+                start_angle = (90.0 - 360.0 * start_bp / self._length) * 16
+                span_angle = -(360.0 * span_bp / self._length) * 16
+                # Selection glow (issue #26): a wide translucent halo under arcs
+                # that overlap the current sequence-view selection.
+                if glow:
+                    painter.setPen(QPen(QColor(250, 204, 21, 160), self._LANE_WIDTH + 8,
+                                        Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap))
+                    painter.drawArc(rect, round(start_angle), round(span_angle))
+                painter.setPen(QPen(color, self._LANE_WIDTH, Qt.PenStyle.SolidLine,
+                                    Qt.PenCapStyle.FlatCap))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
                 painter.drawArc(rect, round(start_angle), round(span_angle))
-            painter.setPen(QPen(color, self._LANE_WIDTH, Qt.PenStyle.SolidLine,
-                                Qt.PenCapStyle.FlatCap))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawArc(rect, round(start_angle), round(span_angle))
 
             # Strand arrowhead: PLUS at the end (clockwise), MINUS at the start
             # (counter-clockwise); none for BOTH/unstranded.
