@@ -266,8 +266,13 @@ class MainWindow(QMainWindow):
                 dna_sequence=self._seq_panel._active.seq,
                 organism=organism,
             )
-            self._seq_panel._active.seq = result.optimized
-            self._seq_panel._refresh_active()
+            # _commit_edit pushes an undo checkpoint, re-renders and updates the undo
+            # buttons. The previous code assigned .seq directly and then called
+            # _refresh_active(), which does not exist — so the sequence was mutated and
+            # *then* an "Optimization failed" dialog appeared, with no way back (#60).
+            self._seq_panel._commit_edit(
+                result.optimized, f"Codon-optimized for {label} ({result.changes} codons changed)"
+            )
             QMessageBox.information(
                 self, "Codon Optimization Complete",
                 f"Optimized for {label}\n"
