@@ -33,13 +33,31 @@ def get_or_predict_structure(req: StructureRequest) -> StructureResult:
                 else _pdb.search_by_gene(req.gene_symbol)
             )
             if ids:
-                pdb_text = _pdb.download_pdb(ids[0])
+                chosen = ids[0]
+                pdb_text = _pdb.download_pdb(chosen)
+                # Say how this entry was picked. RCSB returns result_set in its
+                # own relevance order, so ids[0] is "best text match", which is
+                # NOT the same as the best structure for the user's sequence:
+                # there is no organism filter and no sequence-identity check
+                # (#66.3). Claiming otherwise, or saying nothing, leaves the user
+                # unable to tell a good match from an arbitrary one.
+                basis = (
+                    f"Chosen as the top RCSB relevance hit for "
+                    f"{'UniProt ' + req.uniprot_id if req.uniprot_id else 'gene ' + str(req.gene_symbol)}"
+                )
+                if len(ids) > 1:
+                    basis += f", out of {len(ids)} entries ({', '.join(ids[1:6])}…)"
                 return StructureResult(
                     source=StructureSource.EXPERIMENTAL_PDB,
-                    pdb_id=ids[0],
+                    pdb_id=chosen,
                     pdb_text=pdb_text,
                     sequence_length=len(req.sequence),
-                    confidence_note="Experimental structure from RCSB PDB — no per-residue confidence score.",
+                    pdb_candidates=ids,
+                    confidence_note=(
+                        "Experimental structure from RCSB PDB — no per-residue confidence score. "
+                        f"{basis}. Not ranked by sequence identity to your sequence, and not "
+                        "filtered by organism, so check the entry matches what you mean."
+                    ),
                 )
         except Exception as e:
             warnings.append(f"PDB lookup failed, trying AlphaFold DB: {e}")

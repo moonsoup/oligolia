@@ -63,3 +63,46 @@ def test_interaction_points_endpoint_shape(client) -> None:
 def test_interaction_points_endpoint_rejects_garbage_input(client) -> None:
     resp = client.post("/structure/interaction_points", json={"pdb_text": "not a pdb file"})
     assert resp.status_code == 400
+
+
+# --- #66.3: say which PDB entry was chosen, and on what basis ---
+
+def test_the_chosen_entry_and_its_alternatives_are_reported(monkeypatch) -> None:
+    """`ids[0]` from an unranked search, with a note that mentioned neither.
+
+    Full sequence-identity ranking needs a live fetch per candidate and is
+    follow-up work; what this fixes is that the user could not tell an arbitrary
+    pick from a good one.
+    """
+    from backend.models.structure import StructureRequest
+    from backend.routers import structure as mod
+
+    monkeypatch.setattr(mod._pdb, "search_by_uniprot", lambda *a, **k: ["1ABC", "2DEF", "3GHI"])
+    monkeypatch.setattr(mod._pdb, "download_pdb", lambda pdb_id: f"HEADER {pdb_id}\nEND\n")
+
+    result = mod.get_or_predict_structure(
+        StructureRequest(sequence="MVHLTPEEK", uniprot_id="P68871")
+    )
+
+    assert result.pdb_id == "1ABC"
+    assert result.pdb_candidates == ["1ABC", "2DEF", "3GHI"]
+    note = result.confidence_note
+    assert "2DEF" in note, note
+    assert "3 entries" in note, note
+    # It must not imply an identity or organism check that did not happen.
+    assert "Not ranked by sequence identity" in note, note
+    assert "not" in note.lower() and "organism" in note.lower(), note
+
+
+def test_a_single_hit_does_not_claim_alternatives(monkeypatch) -> None:
+    from backend.models.structure import StructureRequest
+    from backend.routers import structure as mod
+
+    monkeypatch.setattr(mod._pdb, "search_by_uniprot", lambda *a, **k: ["1ABC"])
+    monkeypatch.setattr(mod._pdb, "download_pdb", lambda pdb_id: "HEADER\nEND\n")
+
+    result = mod.get_or_predict_structure(
+        StructureRequest(sequence="MVHLTPEEK", uniprot_id="P68871")
+    )
+    assert result.pdb_candidates == ["1ABC"]
+    assert "out of" not in result.confidence_note

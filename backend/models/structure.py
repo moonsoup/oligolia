@@ -21,6 +21,11 @@ class StructureResult(BaseModel):
     pdb_text: str
     sequence_length: int
     confidence_note: str = ""
+    #: Every PDB entry the search returned, best first. `pdb_id` is the one used.
+    #: Surfaced because the entry was chosen as `ids[0]` from an unranked list
+    #: with no organism filter and no sequence-identity check, and nothing told
+    #: the user that or what the alternatives were (#66.3).
+    pdb_candidates: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
 

@@ -54,31 +54,47 @@ def compute_interaction_points(pdb_text: str) -> list[dict]:
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure("structure", StringIO(pdb_text))
 
-    sr = ShrakeRupley()
-    sr.compute(structure, level="R")
+    # SASA must be computed on ONE model with solvent removed.
+    #
+    # An NMR ensemble holds many models of the same molecule in one coordinate
+    # frame, so running Shrake-Rupley over the whole structure lets them bury
+    # each other's surface. Measured on 1CRN with its single model duplicated:
+    # flagged interaction points 15 -> 8, mean relative SASA 0.376 -> 0.135. The
+    # reporting loop below already took the first model, so the residues were
+    # right and their exposure was wrong -- correct-looking output, occluded
+    # numbers (#66).
+    #
+    # Waters and ligands occlude by the same path, and a crystal structure
+    # usually has plenty of them.
+    model = next(iter(structure))
+    for chain in model:
+        for residue in [r for r in chain if r.id[0] != " "]:
+            chain.detach_child(residue.id)
 
+    sr = ShrakeRupley()
+    sr.compute(model, level="R")
+
+    # One model, already chosen above — no `break` needed to escape a model loop.
     points: list[dict] = []
-    for model in structure:
-        for chain in model:
-            for residue in chain:
-                resname = residue.get_resname()
-                max_asa = MAX_ASA.get(resname)
-                if max_asa is None:
-                    continue  # skip waters/ligands/non-standard residues
-                classification = CHARGE_CLASS.get(resname, "hydrophobic")
-                relative_sasa = float(min(residue.sasa / max_asa, 1.0))
-                is_interaction_point = bool(
-                    classification in ("acidic", "basic", "polar")
-                    and relative_sasa >= SASA_EXPOSURE_THRESHOLD
-                )
-                points.append({
-                    "residue_index": int(residue.id[1]),
-                    "residue_name": resname,
-                    "chain": chain.id,
-                    "classification": classification,
-                    "relative_sasa": round(relative_sasa, 4),
-                    "is_putative_interaction_point": is_interaction_point,
-                })
-        break  # first model only — structures here are single-model (X-ray/predicted)
+    for chain in model:
+        for residue in chain:
+            resname = residue.get_resname()
+            max_asa = MAX_ASA.get(resname)
+            if max_asa is None:
+                continue  # non-standard residue with no reference maximum
+            classification = CHARGE_CLASS.get(resname, "hydrophobic")
+            relative_sasa = float(min(residue.sasa / max_asa, 1.0))
+            is_interaction_point = bool(
+                classification in ("acidic", "basic", "polar")
+                and relative_sasa >= SASA_EXPOSURE_THRESHOLD
+            )
+            points.append({
+                "residue_index": int(residue.id[1]),
+                "residue_name": resname,
+                "chain": chain.id,
+                "classification": classification,
+                "relative_sasa": round(relative_sasa, 4),
+                "is_putative_interaction_point": is_interaction_point,
+            })
 
     return points

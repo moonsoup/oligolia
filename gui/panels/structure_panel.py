@@ -139,10 +139,23 @@ class StructurePanel(QWidget):
         self._sequence = sequence
         self._gene_symbol = gene_symbol
         self._uniprot_id = uniprot_id
-        if uniprot_id:
-            self._uniprot_input.setText(uniprot_id)
-        if gene_symbol:
-            self._gene_input.setText(gene_symbol)
+
+        # Set the fields unconditionally, INCLUDING to empty. `if uniprot_id:`
+        # left the previous protein's accession in the box, and _run_predict reads
+        # the box — so a new sequence with no accession of its own was looked up
+        # under the last one, and the panel showed a different protein's structure
+        # for the sequence in front of the user (#66).
+        self._uniprot_input.setText(uniprot_id or "")
+        self._gene_input.setText(gene_symbol or "")
+
+        # Derived state belongs to the old target, not this one.
+        self._result = None
+        self._points = []
+        self._table.setRowCount(0)
+        self._badge.setText("")
+        for button in (self._btn_save, self._btn_viewer, self._btn_flag):
+            button.setEnabled(False)
+
         self._target_label.setText(f"Loaded protein: {len(sequence):,} residues")
         self._btn_predict.setEnabled(bool(sequence))
 
