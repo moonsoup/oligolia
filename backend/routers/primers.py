@@ -108,15 +108,69 @@ def _gc(seq: str) -> float:
     return (seq.count("G") + seq.count("C")) / len(seq) * 100 if seq else 0.0
 
 
-def _has_hairpin(seq: str, min_stem: int = 4) -> bool:
+#: The shortest loop a primer can actually fold around. Below 3 nt the backbone
+#: cannot turn, so two complementary arms sitting closer than this are not a
+#: hairpin however well they pair.
+MIN_HAIRPIN_LOOP = 3
+
+#: Stem length that counts as a hairpin. At 4 bp even ordinary sequence pairs up
+#: somewhere — a 4-mer has only 256 possibilities — so a 4-bp stem with a loop is
+#: not worth rejecting a primer over. Real tools score hairpins by free energy;
+#: this is a length heuristic and is deliberately set where it does not reject
+#: most of the template.
+MIN_HAIRPIN_STEM = 5
+
+#: At most this many of the last three bases may be G or C. A strong 3' end
+#: promotes mispriming.
+MAX_3PRIME_GC = 2
+
+#: Homopolymer runs to reject outright.
+HOMOPOLYMERS = ("AAAA", "TTTT", "GGGG", "CCCC")
+
+
+def _has_hairpin(seq: str, min_stem: int = MIN_HAIRPIN_STEM, min_loop: int = MIN_HAIRPIN_LOOP) -> bool:
+    """Does the primer fold back on itself?
+
+    A hairpin needs two things: a stem of complementary arms, AND a loop between
+    them long enough for the backbone to turn. The previous version checked only
+    whether any `min_stem`-mer appeared anywhere in the whole reverse complement,
+    with no loop requirement and no positional relationship at all — so it flagged
+    56% of random 20-mers.
+
+    `GAATTCAAAAAAAAAAAAAA` was its headline false positive: GAATTC is
+    self-complementary, but its two halves are ADJACENT, so the loop length is
+    zero and it cannot fold (#62).
+    """
     seq = seq.upper()
     comp = str.maketrans("ACGT", "TGCA")
-    rc = seq.translate(comp)[::-1]
-    for i in range(len(seq) - min_stem * 2 - 3):
-        stem = seq[i:i+min_stem]
-        if stem in rc:
+    n = len(seq)
+
+    for i in range(n - 2 * min_stem - min_loop + 1):
+        arm = seq[i:i + min_stem]
+        # The downstream arm has to be this arm's reverse complement, and it has
+        # to start at least min_loop bases after the upstream arm ends.
+        target = arm.translate(comp)[::-1]
+        if target in seq[i + min_stem + min_loop:]:
             return True
     return False
+
+
+def _acceptable_primer(seq: str) -> bool:
+    """The sequence-only rules a primer must pass, whichever orientation it is.
+
+    Forward and reverse candidates were filtered by DIFFERENT rules: reverse
+    candidates skipped the 3'-GC-clamp and homopolymer checks entirely, so 14 of
+    20 returned pairs had reverse primers that the forward filter would have
+    rejected — `GCTGCCCCTACGGATCGCA` among them (#62).
+
+    Tm and GC window stay at the call site because they come from the request.
+    """
+    seq = seq.upper()
+    if _has_hairpin(seq):
+        return False
+    if seq[-3:].count("G") + seq[-3:].count("C") > MAX_3PRIME_GC:
+        return False
+    return not any(run in seq for run in HOMOPOLYMERS)
 
 
 def _reverse_complement(seq: str) -> str:
@@ -142,55 +196,108 @@ def design_primers(req: PrimerDesignRequest) -> list[PrimerPair]:
     fwd_candidates: list[Primer] = []
     rev_candidates: list[Primer] = []
 
+    # Order matters for cost: GC and the sequence-only rules are cheap string
+    # work, while _tm_nearest_neighbor is a nearest-neighbour calculation over
+    # every dinucleotide. Computing Tm for all ~21k candidates of a 3 kb template
+    # and then discarding most of them is what made this slow once #50 replaced
+    # the old arithmetic Wallace formula (#62.3).
     for length in range(req.primer_len_min, req.primer_len_max + 1):
         for pos in range(0, len(template) - length + 1):
             seq = template[pos:pos + length]
             gc = _gc(seq)
+            if not (req.gc_min <= gc <= req.gc_max):
+                continue
+            if not _acceptable_primer(seq):
+                continue
             tm = _tm_nearest_neighbor(seq)
-            if (req.tm_min <= tm <= req.tm_max
-                    and req.gc_min <= gc <= req.gc_max
-                    and not _has_hairpin(seq)
-                    and not seq[-3:].count("G") + seq[-3:].count("C") > 2  # 3' GC clamp ≤2
-                    and "AAAA" not in seq and "TTTT" not in seq
-                    and "GGGG" not in seq and "CCCC" not in seq):
-                fwd_candidates.append(Primer(
-                    sequence=seq, position=pos, length=length,
-                    tm=round(tm, 1), gc_content=round(gc, 1), direction="forward",
-                ))
-
-        for pos in range(length, len(template) + 1):
-            seq = template[pos - length:pos]
-            rc_seq = _reverse_complement(seq)
-            gc = _gc(rc_seq)
-            tm = _tm_nearest_neighbor(rc_seq)
-            if (req.tm_min <= tm <= req.tm_max
-                    and req.gc_min <= gc <= req.gc_max
-                    and not _has_hairpin(rc_seq)):
-                rev_candidates.append(Primer(
-                    sequence=rc_seq, position=pos - length, length=length,
-                    tm=round(tm, 1), gc_content=round(gc, 1), direction="reverse",
-                ))
-
-    pairs: list[PrimerPair] = []
-    for fwd in fwd_candidates:
-        for rev in rev_candidates:
-            product = rev.position + rev.length - fwd.position
-            if not (req.product_min <= product <= req.product_max):
+            if not (req.tm_min <= tm <= req.tm_max):
                 continue
-            if rev.position <= fwd.position:
-                continue
-            tm_diff = abs(fwd.tm - rev.tm)
-            if tm_diff > 5:
-                continue
-            penalty = tm_diff + abs(fwd.gc_content - rev.gc_content) * 0.1
-            pairs.append(PrimerPair(
-                forward=fwd, reverse=rev,
-                product_size=product,
-                penalty=round(penalty, 3),
+            fwd_candidates.append(Primer(
+                sequence=seq, position=pos, length=length,
+                tm=round(tm, 1), gc_content=round(gc, 1), direction="forward",
             ))
 
-    pairs.sort(key=lambda p: p.penalty)
-    return pairs[:req.max_pairs]
+        for pos in range(length, len(template) + 1):
+            rc_seq = _reverse_complement(template[pos - length:pos])
+            gc = _gc(rc_seq)
+            if not (req.gc_min <= gc <= req.gc_max):
+                continue
+            # The same rules as forward. Reverse candidates used to skip the
+            # 3'-GC-clamp and homopolymer checks entirely (#62.2).
+            if not _acceptable_primer(rc_seq):
+                continue
+            tm = _tm_nearest_neighbor(rc_seq)
+            if not (req.tm_min <= tm <= req.tm_max):
+                continue
+            rev_candidates.append(Primer(
+                sequence=rc_seq, position=pos - length, length=length,
+                tm=round(tm, 1), gc_content=round(gc, 1), direction="reverse",
+            ))
+
+    # Index the reverse candidates by their 3' end so each forward primer only
+    # visits the ones that can give a legal product. The old loop was O(F x R):
+    # 14.5k x 14.5k on a 3 kb template, and it built a pydantic PrimerPair for
+    # every one of the ~14.5M legal combinations before sorting and throwing all
+    # but `max_pairs` away (#62.3).
+    #
+    # Two changes: bisect to the legal window, and keep only the best max_pairs
+    # in a bounded heap of plain tuples, constructing PrimerPair objects once at
+    # the end. Same pairs, same order, without materialising the cross product.
+    import bisect
+    import heapq
+
+    rev_by_end = sorted(rev_candidates, key=lambda r: r.position + r.length)
+    rev_ends = [r.position + r.length for r in rev_by_end]
+
+    # A max-heap keyed on penalty (negated), so the worst kept pair is at the top
+    # and can be evicted in O(log n).
+    best: list[tuple[float, int, Primer, Primer, int]] = []
+    counter = 0
+
+    # `penalty = tm_diff + 0.1 * gc_diff`, and gc_diff >= 0, so penalty >= tm_diff
+    # ALWAYS. That makes tm_diff an admissible lower bound: once the heap is full,
+    # any pair whose tm_diff already exceeds the worst kept penalty cannot beat it,
+    # and can be rejected without computing the GC term or rounding anything.
+    #
+    # This is an exact prune, not a heuristic — the same pairs come out. It matters
+    # because profiling showed the inner loop dominating everything else:
+    # 24.7M round() and 60M abs() calls, against 1.1s total inside Tm_NN.
+    limit = 5.0
+
+    for fwd in fwd_candidates:
+        f_pos, f_tm, f_gc = fwd.position, fwd.tm, fwd.gc_content
+        lo = bisect.bisect_left(rev_ends, f_pos + req.product_min)
+        hi = bisect.bisect_right(rev_ends, f_pos + req.product_max)
+
+        for rev in rev_by_end[lo:hi]:
+            tm_diff = f_tm - rev.tm
+            if tm_diff < 0.0:
+                tm_diff = -tm_diff
+            if tm_diff > limit:
+                continue
+            if rev.position <= f_pos:
+                continue
+
+            gc_diff = f_gc - rev.gc_content
+            if gc_diff < 0.0:
+                gc_diff = -gc_diff
+            penalty = tm_diff + gc_diff * 0.1
+
+            counter += 1
+            entry = (-penalty, counter, fwd, rev, rev.position + rev.length - f_pos)
+            if len(best) < req.max_pairs:
+                heapq.heappush(best, entry)
+                if len(best) == req.max_pairs:
+                    limit = min(5.0, -best[0][0])
+            elif penalty < -best[0][0]:
+                heapq.heapreplace(best, entry)
+                limit = min(5.0, -best[0][0])
+
+    pairs = [
+        PrimerPair(forward=f, reverse=r, product_size=prod, penalty=round(-neg, 3))
+        for neg, _n, f, r, prod in sorted(best, key=lambda e: (-e[0], e[1]))
+    ]
+    return pairs
 
 
 # Curated enzyme panel. Recognition sequences AND cut geometry (overhangs,
