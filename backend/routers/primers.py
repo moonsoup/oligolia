@@ -173,6 +173,43 @@ def _acceptable_primer(seq: str) -> bool:
     return not any(run in seq for run in HOMOPOLYMERS)
 
 
+#: The longest 3'-end complementarity a pair may have. Three or fewer bases pair
+#: by chance often enough that rejecting on them would throw away most usable
+#: pairs -- the mistake #62's hairpin filter made.
+MAX_3PRIME_DIMER = 3
+
+
+def three_prime_dimer_length(fwd: str, rev: str) -> int:
+    """How many bases of the two primers' 3' ends are complementary.
+
+    A 3' primer-dimer is a property of the PAIR, not of either primer, so no
+    amount of per-primer filtering finds it (#52). It is one of the commonest
+    reasons a PCR consumes itself without amplifying the target: the two primers
+    anneal to each other by their 3' ends and extend each other instead.
+
+    Only the 3' ends matter. Complementarity at the 5' ends cannot prime, because
+    it is the 3' end that a polymerase extends -- so this compares the tail of one
+    primer against the reverse complement of the tail of the other, and returns
+    the longest such overlap found.
+    """
+    fwd, rev = fwd.upper(), rev.upper()
+    comp = str.maketrans("ACGT", "TGCA")
+    longest = 0
+
+    for n in range(1, min(len(fwd), len(rev)) + 1):
+        tail = fwd[-n:]
+        # If rev's 3' tail is the reverse complement of fwd's 3' tail, they anneal
+        # 3'-to-3' and both can extend.
+        if rev[-n:] == tail.translate(comp)[::-1]:
+            longest = n
+    return longest
+
+
+def forms_3prime_dimer(fwd: str, rev: str, limit: int = MAX_3PRIME_DIMER) -> bool:
+    """Is the pair's 3'-end complementarity long enough to matter?"""
+    return three_prime_dimer_length(fwd, rev) > limit
+
+
 def _reverse_complement(seq: str) -> str:
     comp = str.maketrans("ACGTacgt", "TGCAtgca")
     return seq.translate(comp)[::-1]
@@ -276,6 +313,12 @@ def design_primers(req: PrimerDesignRequest) -> list[PrimerPair]:
             if tm_diff > limit:
                 continue
             if rev.position <= f_pos:
+                continue
+
+            # A pair property, so it cannot be checked when the candidates are
+            # built (#52). Placed after the cheap numeric rejections so it runs
+            # only on pairs that are otherwise viable.
+            if forms_3prime_dimer(fwd.sequence, rev.sequence):
                 continue
 
             gc_diff = f_gc - rev.gc_content
