@@ -1,7 +1,14 @@
 """Oligolia — Gene Editing & Viewing Platform — FastAPI backend."""
 
 from contextlib import asynccontextmanager
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from fastapi import FastAPI
+
+from version import VERSION
 from fastapi.middleware.cors import CORSMiddleware
 
 from .routers import (
@@ -27,13 +34,17 @@ app = FastAPI(
         "Supports FASTA, FASTQ, GenBank, EMBL, GFF3, GTF, VCF, BED formats. "
         "Features: sequence editing, CRISPR design, MSA, variant annotation, pathway analysis."
     ),
-    version="0.1.0",
+    version=VERSION,
     lifespan=lifespan,
 )
 
+# Permissive CORS is for local development and the QA pipeline only. The shipped
+# app makes no HTTP calls to this server at all — the GUI imports the router
+# functions and calls them in-process, so nothing here is reachable from a
+# browser unless someone runs run_backend.py deliberately (#71).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tauri desktop — tightened in production
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

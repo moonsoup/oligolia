@@ -5,28 +5,45 @@
 
 ## What This Is
 
-A free, open-source desktop bioinformatics platform: PyQt6 GUI + an embedded FastAPI
-backend (not a hosted service). Search NCBI/Ensembl/UniProt/etc., design CRISPR guides,
-align sequences, annotate variants — all offline, packaged as a native installer.
+A free, open-source desktop bioinformatics platform: a PyQt6 GUI that calls FastAPI
+router functions **in-process** (not a hosted service, and not an embedded HTTP server —
+see below). Search NCBI/Ensembl/UniProt/etc., design CRISPR guides, align sequences,
+annotate variants — packaged as a native installer.
 
 ## Stack
 
 | Layer | Tech |
 |---|---|
 | GUI | PyQt6 (`gui/`) |
-| Backend | FastAPI, embedded and launched by the GUI process (`backend/`) |
+| Backend | FastAPI routers, imported and called **in-process** by the GUI (`backend/`) |
 | Bio | Biopython |
 | Packaging | PyInstaller → DMG (macOS) / Inno Setup (Windows) / AppImage (Linux) |
 | Distribution | GitHub Releases — built on version-tag push, which Claude now creates routinely per push to `main` (see rule 3) |
 | Repo | moonsoup/oligolia (public) |
 
+## There is no embedded HTTP backend
+
+Worth stating plainly, because it changes how every other doc reads (#71).
+`oligolia.py` never starts uvicorn. The GUI imports router functions directly —
+`from backend.routers.crispr import design_guides` and so on — and calls them on a
+worker thread. No socket, no port, no server process.
+
+`run_backend.py` does start uvicorn on 127.0.0.1:8765 with `reload=True`, but that is
+for development and for the QA pipeline, which drives the app over HTTP. Users never
+run it.
+
 ## Running / Testing Locally
 
 ```bash
-python oligolia.py                                  # launch the GUI
-cd backend && .venv/bin/python -m pytest tests/ -q   # backend test suite
-ruff check backend/ gui/                             # lint
+python oligolia.py        # launch the GUI
+make check                # lint + backend + GUI — exactly what CI runs
+make test                 # backend suite only
+make venv                 # create backend/.venv (make check does this for you)
 ```
+
+`make check` is the gate: `.github/workflows/ci.yml` runs the same three steps on every
+push and PR, and `release.yml` will not build anything until it passes (#70). Current
+state: **427 backend (3 skipped) + 88 GUI, ruff clean**.
 
 For GUI changes, verify by driving the real widget headlessly rather than asserting on
 internals only: `QT_QPA_PLATFORM=offscreen`, build the widget in a `QApplication`, drive

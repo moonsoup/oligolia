@@ -28,7 +28,7 @@ Align sequences. Annotate variants. All offline, all on your desktop.
 | ↔ | **Alignment** | Needleman-Wunsch and Smith-Waterman pairwise alignment. Multiple sequence alignment via MUSCLE with identity matrix. |
 | 🔬 | **Variant Analysis** | VCF viewer with ClinVar and gnomAD annotation. Filter by gene, chromosome, or allele. Pathogenicity color-coding. |
 | 🧪 | **Protein Analysis** | Molecular weight, isoelectric point, extinction coefficient, GRAVY, instability index, signal peptide prediction, ORF finder. |
-| 🔩 | **Primer Design** | PCR primer pairs with Tm, GC content, and product size constraints. Restriction enzyme site mapping for 20 enzymes. |
+| 🔩 | **Primer Design** | PCR primer pairs with Tm, GC content, and product size constraints. Restriction enzyme site mapping for 24 enzymes, with cut geometry from Biopython's `Bio.Restriction`. |
 | 🗺️ | **Pathway Analysis** | Reactome pathway enrichment, KEGG pathway viewer, STRING protein interaction networks. |
 
 ---
@@ -39,7 +39,7 @@ Free and open source. No Python installation required.
 
 | Platform | Requirements | Link |
 |---|---|---|
-| 🍎 **macOS** | macOS 12+ · Apple Silicon & Intel | [Download `.dmg`](https://github.com/moonsoup/oligolia/releases/latest/download/Oligolia-mac.dmg) |
+| 🍎 **macOS** | macOS 12+ · Apple Silicon (arm64) | [Download `.dmg`](https://github.com/moonsoup/oligolia/releases/latest/download/Oligolia-mac.dmg) |
 | 🪟 **Windows** | Windows 10/11 · 64-bit | [Download Installer](https://github.com/moonsoup/oligolia/releases/latest/download/Oligolia-Setup.exe) · [Source zip](https://github.com/moonsoup/oligolia/archive/refs/heads/main.zip) |
 | 🐧 **Linux** | Ubuntu 20.04+ · x86_64 | [Download AppImage](https://github.com/moonsoup/oligolia/releases/latest/download/Oligolia-x86_64.AppImage) · [Source zip](https://github.com/moonsoup/oligolia/archive/refs/heads/main.zip) |
 

@@ -1,86 +1,95 @@
 # Oligolia — Architecture
 
-## Overview
+A free, offline desktop bioinformatics app. One Python process: a PyQt6 GUI that
+imports FastAPI router functions and calls them **in-process**.
 
-Cross-platform gene editing and viewing platform. Backend processes all bioinformatics; frontend provides the UI; Tauri wraps everything into a native desktop app.
+> Rewritten 2026-09-18. The previous version described a Tauri + React + Vite app
+> with a `src-tauri/` Rust shell talking to a FastAPI server over HTTP. None of
+> that exists any more, and a document describing an architecture the code does
+> not have is worse than no document — it misleads every reader, human or agent
+> (#71).
+
+## There is no server
+
+This is the part that changes how everything else reads.
+
+`oligolia.py` never starts uvicorn. The GUI panels import the router functions
+directly and call them on a worker thread:
+
+```python
+# gui/panels/crispr_panel.py
+from backend.routers.crispr import design_guides
+...
+self._worker = Worker(design_guides, req)
+```
+
+No socket, no port, no server process, no CORS, no HTTP in the shipped app. The
+FastAPI decorators are still there and the Pydantic models still do the
+validation, but nothing serves them to a client.
+
+`run_backend.py` *does* start uvicorn on 127.0.0.1:8765 with `reload=True`. That
+is for development and for the QA pipeline under `.claude/qa/`, which drives the
+app over HTTP on purpose. Users never run it.
+
+## Layout
 
 ```
 oligolia/
-├── backend/          Python FastAPI — bioinformatics engine + DB API clients
-├── frontend/         React + TypeScript + Vite — UI
-├── src-tauri/        Rust Tauri shell — packages as native app
-├── run_backend.py    Dev entry point for backend
-└── docs/
+├── oligolia.py          entry point: QApplication, crash guard, MainWindow
+├── version.py           single source of VERSION
+├── gui/
+│   ├── main_window.py   tabs, menus, the update check
+│   ├── workers.py       Worker (QThread) + WorkerSlot/worker_busy guards
+│   ├── crash_guard.py   sys.excepthook so a slot exception is a dialog, not exit -6
+│   ├── updater.py       GitHub Releases check, patch download + atomic apply
+│   └── panels/          one module per tab; each calls backend routers in-process
+├── backend/
+│   ├── main.py          the FastAPI app — used by run_backend.py and the tests
+│   ├── routers/         the endpoints, and where the logic lives
+│   ├── services/        external API clients (NCBI, Ensembl, UniProt, …) + helpers
+│   ├── models/          Pydantic request/response models
+│   ├── formats/         FASTA, FASTQ, GenBank, EMBL, VCF, GFF3, SnapGene, vendor export
+│   ├── workflow/         the step engine behind the Workflow tab
+│   └── tests/           427 tests (3 skipped without an external aligner)
+├── structure_viewer/    OPTIONAL separate app — 3D viewer, its own release cadence
+├── frontend/            DEAD. See frontend/DEPRECATED.md
+├── .claude/qa/          QA pipeline: scout → runner → analyst → reporter
+└── docs/                the marketing site (GitHub Pages) and these notes
 ```
 
 ## Stack
 
-| Layer | Technology | Why |
-|-------|-----------|-----|
-| Backend | Python 3.11 + FastAPI + Biopython | Best-in-class bioinformatics ecosystem |
-| Frontend | React 18 + TypeScript + Vite | Fast build, strong typing, excellent ecosystem |
-| State | Zustand | Simple, no boilerplate |
-| Data fetching | TanStack Query | Caching, loading states, retry |
-| Desktop shell | Tauri 2.x | 10× smaller than Electron, supports iOS/Android |
-| Styling | Tailwind CSS | Rapid dark-mode-first UI |
+| Layer | Technology |
+|---|---|
+| GUI | PyQt6 |
+| Logic | FastAPI routers + Pydantic models, called in-process |
+| Bio | Biopython 1.85 — also the reference implementation the oracle tests check against |
+| Packaging | PyInstaller → DMG (macOS, arm64) / Inno Setup (Windows) / AppImage (Linux) |
+| CI | `.github/workflows/ci.yml` — lint + backend + offscreen-Qt GUI, gating releases |
 
-## Backend Modules
+## Threading
 
-### Services (external API clients)
-- `ncbi.py` — NCBI Entrez E-utilities + Datasets v2 + BLAST
-- `ensembl.py` — Ensembl REST API v15 (lookup, sequence, VEP, homology)
-- `uniprot.py` — UniProt REST API (search, entry, ID mapping)
-- `kegg.py` — KEGG REST API (genes, pathways, compounds)
-- `reactome.py` — Reactome Content Service (pathways, enrichment)
-- `gnomad.py` — gnomAD GraphQL API (allele frequencies, variants)
-- `string_db.py` — STRING API v12 (protein interactions, enrichment)
-- `pdb.py` — RCSB PDB REST + search (structures, sequences)
+Anything slow runs on a `Worker` (a `QThread` wrapping a callable). Panels guard
+against starting a second job while one is live — rebinding the attribute used to
+drop the last reference to a running QThread, which Qt aborts the process over.
+Use `WorkerSlot` in new code; `worker_busy(self, "_worker")` is the one-line guard
+the existing panels use.
 
-### Format Handlers
-- `fasta.py` — FASTA + FASTQ read/write
-- `genbank.py` — GenBank + EMBL read/write
-- `vcf.py` — VCF v4.3 parse/write/stream
-- `gff.py` — GFF3 + GTF parse/write
+## What is GUI-reachable
 
-### API Routers
-- `/sequences` — CRUD + edit (insert/delete/replace/RC/translate/transcribe)
-- `/databases` — multi-DB search, fetch by ID, BLAST
-- `/files` — upload/parse/convert/download all formats
-- `/alignment` — pairwise (NW/SW) + MSA (MUSCLE/fallback)
-- `/crispr` — SpCas9/Cas9-HF/Cas12a/Cas13 guide design + scoring
-- `/variants` — VCF annotation with gnomAD/ClinVar
-- `/primers` — PCR primer design + restriction enzyme analysis (20 enzymes)
-- `/pathways` — Reactome, KEGG, STRING network endpoints
+Not everything in `backend/` has a tab. ClinVar/gnomAD variant annotation, the
+protein property calculator and the ORF finder are backend-only today, and
+Synthesis Export is present but gated. Worth knowing before assuming a feature is
+user-visible because an endpoint exists.
 
-## Databases Integrated
+## Offline vs network
 
-| Database | Access | Data |
-|----------|--------|------|
-| NCBI Gene | E-utilities REST | Gene records, sequences, summaries |
-| NCBI Nucleotide | E-utilities REST | GenBank records, FASTA |
-| NCBI ClinVar | E-utilities REST | Clinical variant significance |
-| NCBI BLAST | BLAST REST | Sequence similarity search |
-| Ensembl | REST API v15 | Gene lookup, VEP, sequences, homology |
-| UniProt | REST API | Protein entries, ID mapping |
-| KEGG | REST API | Pathways, genes, compounds |
-| Reactome | Content Service | Pathway hierarchy, enrichment |
-| gnomAD | GraphQL | Allele frequencies, constraint |
-| STRING | REST API v12 | Protein-protein interactions |
-| RCSB PDB | REST + search | 3D structures |
+The bioinformatics is local: alignment, CRISPR design, primer design, restriction
+mapping, format conversion, ORFs, repeats, protein properties. The network is
+used only for database search, variant annotation, structure lookup and the
+update check — and 5 of the 12 databases declared in `Database` are actually wired
+into `/databases/search`.
 
-## File Formats Supported
-
-**Input:** FASTA, FASTQ, GenBank (.gb/.gbk), EMBL, GFF3, GTF, VCF
-**Output:** FASTA, FASTQ, GenBank, VCF, GFF3, TSV (guides/primers)
-
-## Cross-Platform Packaging
-
-Development: `python run_backend.py` + `npm run dev` in frontend/
-
-Production (Tauri):
-1. `cd backend && pyinstaller --onefile main_sidecar.py`  
-2. Place binary in `src-tauri/binaries/`
-3. `cd src-tauri && cargo tauri build`
-
-Desktop: Win/Mac/Linux via Tauri 2.x  
-Mobile: iOS/Android via Tauri 2.x (future — same React frontend)
+Multiple sequence alignment needs an external aligner (MUSCLE or ClustalW) on
+PATH. Neither is bundled, so MSA returns a 503 that says so rather than an
+approximation — see #76 for the replacement.
