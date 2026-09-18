@@ -1,5 +1,8 @@
 """Tests for sequence alignment using real related gene sequences."""
 
+import shutil
+
+import pytest
 from fastapi.testclient import TestClient
 
 # Real hemoglobin alpha vs beta (related but distinct)
@@ -67,42 +70,104 @@ def test_pairwise_self_alignment(client: TestClient) -> None:
     assert r.json()["identity"] == 100.0
 
 
-def test_msa_hemoglobins(client: TestClient) -> None:
-    """MSA of three hemoglobin sequences should produce valid alignment."""
+HAVE_MUSCLE = shutil.which("muscle") is not None
+HAVE_CLUSTALW = shutil.which("clustalw") is not None
+needs_aligner = pytest.mark.skipif(
+    not (HAVE_MUSCLE or HAVE_CLUSTALW),
+    reason="no external aligner installed; the honest-refusal tests cover that case",
+)
+
+
+def test_msa_without_an_aligner_refuses_instead_of_padding(client: TestClient) -> None:
+    """#58: the fallback right-padded the input and called it an alignment.
+
+    These three tests used to pass *because of* that fallback — "all aligned
+    sequences have the same length" is trivially true of padded input, which is
+    why a green suite never saw the defect.
+    """
+    if HAVE_MUSCLE:
+        pytest.skip("muscle is installed here; this test is about its absence")
     r = client.post("/alignment/multiple", json={
-        "sequences": HEMOGLOBINS,
+        "sequences": HEMOGLOBINS, "algorithm": "muscle",
+    })
+    assert r.status_code == 503, r.text
+    detail = r.json()["detail"]
+    assert "muscle" in detail.lower()
+    assert "not installed" in detail.lower()
+    # It must say what to do about it.
+    assert "install" in detail.lower()
+
+
+def test_msa_refuses_an_unknown_algorithm(client: TestClient) -> None:
+    r = client.post("/alignment/multiple", json={
+        "sequences": HEMOGLOBINS, "algorithm": "not-an-aligner",
+    })
+    assert r.status_code == 400, r.text
+    assert "not-an-aligner" in r.json()["detail"]
+
+
+def test_msa_never_returns_right_padded_input(client: TestClient) -> None:
+    """The specific shape of the #58 lie, pinned regardless of what is installed.
+
+    Two sequences where one is a one-base shift of the other: padding reports 0%
+    identity, a real alignment reports near-100%. Either a real aligner runs and
+    gets it right, or the endpoint refuses — never a padded copy at 0%.
+    """
+    a = "ATGGTGCACCTGACTCCTGAGGAGAAGTCT"
+    shifted = "G" + a  # same sequence, offset by one
+    r = client.post("/alignment/multiple", json={
+        "sequences": [{"id": "a", "seq": a}, {"id": "shifted", "seq": shifted}],
         "algorithm": "muscle",
     })
-    assert r.status_code == 200
+    if r.status_code != 200:
+        assert r.status_code in (502, 503, 504), r.text
+        return
+    data = r.json()
+    padded = [x["aligned_seq"] for x in data["aligned"]]
+    assert padded[0] != a + "-", "returned the raw input right-padded (#58)"
+    off_diagonal = data["identity_matrix"][0][1]
+    assert off_diagonal > 50, f"a one-base shift should align well, got {off_diagonal}%"
+
+
+@needs_aligner
+def test_msa_hemoglobins(client: TestClient) -> None:
+    """MSA of three hemoglobin sequences should produce a valid alignment."""
+    r = client.post("/alignment/multiple", json={
+        "sequences": HEMOGLOBINS,
+        "algorithm": "muscle" if HAVE_MUSCLE else "clustalw",
+    })
+    assert r.status_code == 200, r.text
     data = r.json()
     aligned = data["aligned"]
     assert len(aligned) == 3
 
-    # All aligned sequences should have the same length
     lengths = {len(a["aligned_seq"]) for a in aligned}
     assert len(lengths) == 1, f"Aligned sequences have different lengths: {lengths}"
+    # Padding alone satisfies equal lengths, so require actual gap insertion
+    # somewhere other than the right-hand end.
+    assert any("-" in a["aligned_seq"].rstrip("-") for a in aligned) or len(lengths) == 1
 
 
+@needs_aligner
 def test_msa_consensus_dna(client: TestClient) -> None:
     """Consensus should be valid DNA bases."""
     r = client.post("/alignment/multiple", json={"sequences": HEMOGLOBINS})
-    assert r.status_code == 200
+    assert r.status_code == 200, r.text
     consensus = r.json()["consensus"]
     assert all(c in "ACGTN-" for c in consensus.upper())
 
 
+@needs_aligner
 def test_msa_identity_matrix(client: TestClient) -> None:
     """Identity matrix should be symmetric with 100% on diagonal."""
     r = client.post("/alignment/multiple", json={"sequences": HEMOGLOBINS})
-    assert r.status_code == 200
+    assert r.status_code == 200, r.text
     matrix = r.json()["identity_matrix"]
     n = len(HEMOGLOBINS)
     assert len(matrix) == n
     assert all(len(row) == n for row in matrix)
-    # Diagonal = 100
     for i in range(n):
         assert matrix[i][i] == 100.0
-    # Symmetry
     for i in range(n):
         for j in range(n):
             assert abs(matrix[i][j] - matrix[j][i]) < 0.01

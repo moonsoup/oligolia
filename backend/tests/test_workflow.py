@@ -125,15 +125,30 @@ def test_codon_optimize_step(tp53_exon7: str) -> None:
     assert len(ctx["sequence"]) == len(coding)  # optimized seq is now the context sequence
 
 
-def test_msa_step_local_fallback() -> None:
-    """msa runs via MUSCLE or the built-in fallback on a small sequence set."""
+def test_msa_step_needs_a_real_aligner_and_says_so() -> None:
+    """The msa step completes only if an aligner exists, and fails clearly if not.
+
+    This test was `test_msa_step_local_fallback` and asserted COMPLETE
+    unconditionally — which passed only because the router padded the input and
+    called it an alignment (#58). With the fallback gone, "complete" has to mean
+    something actually aligned the sequences.
+    """
+    import shutil
+
     seqs = [{"id": "a", "seq": "ACGTACGTAC"}, {"id": "b", "seq": "ACGTTCGTAC"},
             {"id": "c", "seq": "ACGTACGTTC"}]
     wf = _wf(WorkflowStep(id="s1", type=StepType.MSA, params={"sequences": seqs}))
     run_workflow(wf)
     step = wf.step("s1")
-    assert step.status == StepStatus.COMPLETE
-    assert len(step.result["aligned"]) == 3
+
+    if shutil.which("muscle"):
+        assert step.status == StepStatus.COMPLETE, step.error
+        assert len(step.result["aligned"]) == 3
+    else:
+        assert step.status == StepStatus.FAILED
+        assert "503" in step.error and "muscle" in step.error.lower(), step.error
+        # The engine must surface the reason, not just "failed".
+        assert "install" in step.error.lower(), step.error
 
 
 def test_db_search_step_mocked(monkeypatch) -> None:

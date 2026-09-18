@@ -70,3 +70,45 @@ def test_screenshot_of_a_completed_alignment(app: QApplication, tmp_path) -> Non
     out = tmp_path / "alignment_panel.png"
     assert panel.grab().save(str(out)), "grab().save() failed"
     assert out.stat().st_size > 1000, "screenshot suspiciously small"
+
+
+# --- #58: the panel must not fabricate an alignment either ---
+
+import shutil  # noqa: E402
+
+import pytest as _pytest  # noqa: E402
+
+
+def test_msa_without_an_aligner_raises_instead_of_padding(app: QApplication) -> None:
+    """#58: the panel had its own copy of the right-padding fallback.
+
+    Worker.error is already wired to the status line, so raising is enough to tell
+    the user the truth. What must never happen is a dict of padded input coming
+    back and `_on_msa_done` reporting "Aligned 2 sequences."
+    """
+    if shutil.which("muscle"):
+        _pytest.skip("muscle is installed here; this test is about its absence")
+
+    panel = AlignmentPanel()
+    seqs = [
+        {"id": "a", "seq": "ATGGTGCACCTGACTCCTGAGGAGAAGTCT"},
+        {"id": "b", "seq": "GATGGTGCACCTGACTCCTGAGGAGAAGTCT"},
+    ]
+
+    with _pytest.raises(RuntimeError) as err:
+        panel._do_msa(seqs)
+
+    msg = str(err.value).lower()
+    assert "muscle" in msg
+    assert "not installed" in msg
+
+
+def test_the_panel_no_longer_carries_its_own_aligner_copy() -> None:
+    """#58 also asked for the duplication to go: one implementation, one fix."""
+    from pathlib import Path
+
+    source = Path(__file__).with_name("alignment_panel.py").read_text()
+    assert "muscle" not in source.replace('algorithm="muscle"', ""), (
+        "the panel should delegate to backend.routers.alignment, not shell out itself (#58)"
+    )
+    assert "multiple_align" in source

@@ -207,55 +207,30 @@ class AlignmentPanel(QWidget):
         self._msa_worker.start()
 
     def _do_msa(self, seqs: list[dict]) -> dict:
-        import subprocess
-        import tempfile
-        import os
-        fasta_in = "".join(f">{s['id']}\n{s['seq']}\n" for s in seqs)
+        """Align via the backend router, in-process.
+
+        This used to be a second, independent copy of the MUSCLE call, the
+        right-padding fallback, the consensus and the identity matrix — so #58 had
+        to be fixed twice and the two could drift apart. It now calls the router,
+        which refuses rather than approximating; the Worker's `error` signal puts
+        the reason on the status line.
+        """
+        from fastapi import HTTPException
+
+        from backend.routers.alignment import MSARequest, multiple_align
+
         try:
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".fa", delete=False) as fin:
-                fin.write(fasta_in)
-                fin_path = fin.name
-            out_path = fin_path + ".aln"
-            result = subprocess.run(
-                ["muscle", "-align", fin_path, "-output", out_path],
-                capture_output=True, timeout=60,
-            )
-            if result.returncode != 0:
-                raise RuntimeError(result.stderr.decode())
-            from Bio import SeqIO
-            aligned = [(r.id, str(r.seq)) for r in SeqIO.parse(out_path, "fasta")]
-            os.unlink(fin_path)
-            os.unlink(out_path)
-        except (FileNotFoundError, RuntimeError):
-            # Fallback: pad to same length
-            os.unlink(fin_path) if "fin_path" in dir() and os.path.exists(fin_path) else None
-            max_len = max(len(s["seq"]) for s in seqs)
-            aligned = [(s["id"], s["seq"] + "-" * (max_len - len(s["seq"]))) for s in seqs]
+            res = multiple_align(MSARequest(sequences=seqs, algorithm="muscle"))
+        except HTTPException as e:
+            # Worker.error stringifies whatever is raised; HTTPException's own repr
+            # buries the message, so surface just the detail.
+            raise RuntimeError(e.detail) from None
 
-        # Consensus
-        if aligned:
-            length = max(len(seq) for _, seq in aligned)
-            consensus = ""
-            for i in range(length):
-                col = [seq[i].upper() for _, seq in aligned if i < len(seq)]
-                most = max(set(col), key=col.count) if col else "N"
-                consensus += most if col.count(most) > len(col) / 2 else "N"
-        else:
-            consensus = ""
-
-        # Identity matrix
-        n = len(aligned)
-        matrix = [[0.0] * n for _ in range(n)]
-        for i in range(n):
-            matrix[i][i] = 100.0
-            for j in range(i + 1, n):
-                s1, s2 = aligned[i][1], aligned[j][1]
-                same = sum(a == b for a, b in zip(s1, s2) if a != "-" and b != "-")
-                total = sum(1 for a, b in zip(s1, s2) if a != "-" or b != "-")
-                pct = round(same / total * 100, 1) if total else 0.0
-                matrix[i][j] = matrix[j][i] = pct
-
-        return {"aligned": aligned, "consensus": consensus, "matrix": matrix}
+        return {
+            "aligned": [(a["id"], a["aligned_seq"]) for a in res.aligned],
+            "consensus": res.consensus,
+            "matrix": res.identity_matrix,
+        }
 
     def _on_msa_done(self, result: dict) -> None:
         self._msa_progress.hide()

@@ -3,7 +3,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from Bio import Align
-from Bio.Seq import Seq
 
 router = APIRouter(prefix="/alignment", tags=["alignment"])
 
@@ -79,11 +78,33 @@ def pairwise_align(req: PairwiseRequest) -> PairwiseResult:
     )
 
 
+#: Where to get each aligner, so a 503 can tell the user what to do.
+_ALIGNER_HELP = {
+    "muscle": "MUSCLE v5 (`brew install muscle`, or https://drive5.com/muscle)",
+    "clustalw": "ClustalW (`brew install clustal-w`, or http://www.clustal.org/clustal2)",
+}
+
+
 @router.post("/multiple", response_model=MSAResult)
 def multiple_align(req: MSARequest) -> MSAResult:
-    """Run multiple sequence alignment using MUSCLE (via subprocess) or fallback to simple."""
+    """Run multiple sequence alignment with an external aligner.
+
+    Refuses rather than approximating. The previous fallback right-padded the input
+    with "-" and returned it as an alignment, complete with a consensus and an
+    identity matrix — so two sequences differing by a one-base offset came back at
+    0% identity while the UI said "Aligned N sequences" (#58). Neither aligner is
+    bundled, so that was the normal path for users rather than an edge case.
+
+    A real built-in aligner is wanted and is tracked separately; an approximation
+    that cannot be told apart from a true alignment is worse than an error, which is
+    the whole lesson of #58.
+    """
     if len(req.sequences) < 2:
         raise HTTPException(400, "Need at least 2 sequences for MSA")
+    if req.algorithm not in _ALIGNER_HELP:
+        raise HTTPException(
+            400, f"Unknown algorithm {req.algorithm!r}; expected one of {sorted(_ALIGNER_HELP)}"
+        )
 
     import subprocess
     import tempfile
@@ -92,6 +113,8 @@ def multiple_align(req: MSARequest) -> MSAResult:
     # Write input FASTA
     fasta_in = "".join(f">{s['id']}\n{s['seq']}\n" for s in req.sequences)
 
+    fin_path: str | None = None
+    out_path: str | None = None
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".fa", delete=False) as fin:
             fin.write(fasta_in)
@@ -110,21 +133,41 @@ def multiple_align(req: MSARequest) -> MSAResult:
             )
 
         if result.returncode != 0:
-            raise RuntimeError(result.stderr.decode())
+            raise HTTPException(
+                502,
+                f"{req.algorithm} ran but failed (exit {result.returncode}): "
+                f"{result.stderr.decode(errors='replace').strip()[:500]}",
+            )
 
         from Bio import SeqIO
         aligned = list(SeqIO.parse(out_path, "fasta"))
-        os.unlink(fin_path)
-        os.unlink(out_path)
+        if len(aligned) != len(req.sequences):
+            raise HTTPException(
+                502,
+                f"{req.algorithm} returned {len(aligned)} sequences for "
+                f"{len(req.sequences)} inputs — the alignment is incomplete",
+            )
 
-    except (FileNotFoundError, RuntimeError):
-        # Fallback: simple pairwise star alignment (naive, for environments without MUSCLE)
-        os.unlink(fin_path) if os.path.exists(fin_path) else None
-        seqs = [s["seq"] for s in req.sequences]
-        max_len = max(len(s) for s in seqs)
-        padded = [s + "-" * (max_len - len(s)) for s in seqs]
-        from Bio.SeqRecord import SeqRecord
-        aligned = [SeqRecord(Seq(padded[i]), id=req.sequences[i]["id"]) for i in range(len(seqs))]
+    except FileNotFoundError:
+        raise HTTPException(
+            503,
+            f"{req.algorithm} is not installed, so these sequences cannot be aligned. "
+            f"Install {_ALIGNER_HELP[req.algorithm]} and try again. "
+            "Nothing is returned rather than an approximation, because a padded "
+            "copy of the input is indistinguishable from a real alignment (#58).",
+        ) from None
+    except subprocess.TimeoutExpired:
+        # Was uncaught, so a slow aligner produced a 500 with no explanation.
+        raise HTTPException(
+            504,
+            f"{req.algorithm} did not finish within 60s for "
+            f"{len(req.sequences)} sequences (longest {max(len(s['seq']) for s in req.sequences)} bp)",
+        ) from None
+    finally:
+        # The old code leaked out_path on every fallback and fin_path on some.
+        for p in (fin_path, out_path):
+            if p and os.path.exists(p):
+                os.unlink(p)
 
     aligned_out = [{"id": r.id, "aligned_seq": str(r.seq)} for r in aligned]
 
