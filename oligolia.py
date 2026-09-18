@@ -21,6 +21,13 @@ from gui.main_window import MainWindow
 
 def main() -> None:
     app = QApplication(sys.argv)
+
+    # PyQt6 aborts the process when an exception escapes a slot, so install the
+    # crash guard before any window exists (#55). Ctrl-C still works — the hook
+    # delegates KeyboardInterrupt to the default.
+    from gui.crash_guard import install as install_crash_guard
+    install_crash_guard()
+
     from version import VERSION
     app.setApplicationName("Oligolia")
     app.setApplicationVersion(VERSION)

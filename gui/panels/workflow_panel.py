@@ -26,6 +26,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
+from pydantic import ValidationError
+
 from backend.workflow import (
     StepStatus, StepType, Workflow, WorkflowStep, run_workflow, save_ogo, load_ogo,
 )
@@ -226,6 +228,21 @@ class WorkflowPanel(QWidget):
             wf = self._build_workflow()
         except json.JSONDecodeError as e:
             QMessageBox.critical(self, "Invalid parameters", f"A step's JSON parameters are invalid:\n{e}")
+            return
+        except ValidationError as e:
+            # `[]`, `"text"` and `42` are all valid JSON and invalid parameters, so
+            # they got past JSONDecodeError and killed the process (#55).
+            QMessageBox.critical(
+                self, "Invalid parameters",
+                "A step's parameters must be a JSON object, e.g. {\"length\": 20}.\n\n"
+                f"{e.error_count()} problem(s):\n"
+                + "\n".join(f"  • {err.get('msg', err)}" for err in e.errors()[:5]),
+            )
+            return
+        except ValueError as e:
+            # StepType(...) on an unknown step name, and anything else that reduces
+            # to a bad value rather than a bug.
+            QMessageBox.critical(self, "Invalid workflow", f"This workflow cannot be built:\n{e}")
             return
 
         seq = self._seq_input.toPlainText().strip().upper().replace(" ", "").replace("\n", "")

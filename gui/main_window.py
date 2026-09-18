@@ -178,8 +178,8 @@ class MainWindow(QMainWindow):
             return
         path, _ = QFileDialog.getSaveFileName(self, "Save FASTA", "", "FASTA (*.fa *.fasta);;All files (*)")
         if path:
-            with open(path, "w") as f:
-                f.write(write_fasta(seqs))
+            if not self._write_text(path, write_fasta(seqs)):
+                return
             self._status.showMessage(f"Saved {len(seqs)} sequences to {path}")
 
     def _save_genbank(self) -> None:
@@ -188,9 +188,27 @@ class MainWindow(QMainWindow):
             return
         path, _ = QFileDialog.getSaveFileName(self, "Save GenBank", "", "GenBank (*.gb);;All files (*)")
         if path:
-            with open(path, "w") as f:
-                f.write(write_genbank(seqs))
+            if not self._write_text(path, write_genbank(seqs)):
+                return
             self._status.showMessage(f"Saved {len(seqs)} sequences to {path}")
+
+    def _write_text(self, path: str, text: str) -> bool:
+        """Write a file, reporting why not rather than dying.
+
+        Saving to an unwritable location raised PermissionError straight out of a
+        slot, and PyQt6 turns that into exit -6 — the user lost the session for
+        picking the wrong folder (#55).
+        """
+        try:
+            with open(path, "w") as f:
+                f.write(text)
+            return True
+        except OSError as e:
+            QMessageBox.critical(
+                self, "Could not save",
+                f"{path}\n\n{e.strerror or e}\n\nPick a different location and try again.",
+            )
+            return False
 
     def _show_gc(self) -> None:
         if not self._seq_panel._active:
