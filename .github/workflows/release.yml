@@ -9,8 +9,13 @@ on:
 
 jobs:
 
+  # ── Gate: nothing gets built from unverified code (#70) ────────────────────
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   # ── macOS DMG ──────────────────────────────────────────────────────────────
   build-mac:
+    needs: ci
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,6 +90,7 @@ jobs:
 
   # ── Windows Setup.exe ──────────────────────────────────────────────────────
   build-windows:
+    needs: ci
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -160,6 +166,7 @@ jobs:
 
   # ── Linux AppImage ─────────────────────────────────────────────────────────
   build-linux:
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

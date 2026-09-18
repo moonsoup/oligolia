@@ -1,8 +1,13 @@
 name: Build Oligolia
 
+# Manual/branch builds only. This used to trigger on `v*` tags as well, which
+# meant it and release.yml both ran for every version tag — and release.yml
+# deletes and recreates the release, so which assets survived depended on timing
+# and every tag cost double mac/Windows/Linux CI (#70).
+#
+# release.yml owns releases, as CLAUDE.md rule 3 says. This one is for building
+# installers on demand without cutting a release.
 on:
-  push:
-    tags: ["v*"]         # trigger on version tags: git tag v0.1.0 && git push --tags
   workflow_dispatch:     # allow manual trigger from GitHub UI
 
 permissions:

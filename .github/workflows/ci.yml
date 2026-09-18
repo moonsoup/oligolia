@@ -1,0 +1,58 @@
+name: CI
+
+# The gate that was missing (#70): nothing ran pytest or ruff, so releases were
+# built from unverified code. `release.yml` now calls this workflow and will not
+# build anything until it passes.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:        # so release.yml can depend on it
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: tests + lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # PyQt6 needs these to start even under the offscreen platform plugin.
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libegl1 libgl1 libxkbcommon-x11-0 libdbus-1-3 libxcb-cursor0
+
+      - name: Install dependencies
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install --quiet --upgrade pip
+          backend/.venv/bin/pip install --quiet \
+            -r backend/requirements.txt PyQt6 Pillow ruff
+
+      - name: Lint
+        run: backend/.venv/bin/ruff check backend/ gui/ oligolia.py
+
+      - name: Backend tests
+        working-directory: backend
+        run: .venv/bin/python -m pytest tests/ -q
+
+      # The GUI suite drives real widgets under the offscreen platform plugin,
+      # which is the pattern CLAUDE.md prescribes and the only thing that catches
+      # the panel-level defects (#54, #56, #59, #60, #64, #77).
+      - name: GUI tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: backend/.venv/bin/python -m pytest gui/ -q
+
+      - name: Summary
+        if: always()
+        run: echo "Lint, ${{ job.status }} — backend and GUI suites run on every push and PR."
