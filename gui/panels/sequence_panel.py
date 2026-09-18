@@ -22,6 +22,7 @@ from PyQt6.QtGui import (
 from Bio.Seq import Seq
 from backend.models.sequence import Sequence, MoleculeType, Annotation
 from backend.formats import read_embl, read_fasta, read_fastq, read_genbank, read_snapgene, VENDORS
+from backend.services.annotations import flip_annotations, shift_annotations
 from gui.history import UndoStack
 from gui.panels.feature_colors import feature_color_map
 from gui.panels.plasmid_map import PlasmidMapWidget
@@ -31,6 +32,10 @@ import re
 # Molecule-type-changing ops (translate/transcribe/back_transcribe) stay
 # non-destructive and render into the result pane instead.
 IN_PLACE_OPS = {"insert", "delete", "replace", "reverse_complement", "complement"}
+
+#: Operations that only mean something on a nucleotide sequence. Running them on
+#: a protein produced nonsense silently (#59).
+NUCLEOTIDE_ONLY_OPS = {"reverse_complement", "complement", "transcribe", "back_transcribe"}
 
 
 class DNAHighlighter(QSyntaxHighlighter):
@@ -733,6 +738,14 @@ class SequencePanel(QWidget):
 
     def add_sequence(self, seq: Sequence) -> None:
         self._auto_annotate(seq)
+        # Two records with the same ID used to collapse into one, and the second
+        # inherited the first's undo history (#59). Records are keyed by ID
+        # throughout, so make the ID unique rather than re-keying everything.
+        if seq.id in self._sequences:
+            base, n = seq.id, 2
+            while f"{base}#{n}" in self._sequences:
+                n += 1
+            seq.id = f"{base}#{n}"
         self._sequences[seq.id] = seq
         item = QListWidgetItem(f"{'🔵' if seq.molecule_type == MoleculeType.DNA else '🟡' if seq.molecule_type == MoleculeType.RNA else '🟣'} {seq.id}")
         item.setData(Qt.ItemDataRole.UserRole, seq.id)
@@ -889,9 +902,41 @@ class SequencePanel(QWidget):
             item.setToolTip(f"{seq.length:,} bp · {seq.molecule_type.value}")
         self._render_active()
 
-    def _commit_edit(self, new_seq: str, msg: str) -> None:
-        """Apply an in-place edit with an undo checkpoint of the prior state."""
+    def _commit_edit(
+        self, new_seq: str, msg: str,
+        *, splice: tuple[int, int, int] | None = None, flip: bool = False,
+    ) -> None:
+        """Apply an in-place edit with an undo checkpoint of the prior state.
+
+        `splice` is `(start, end, inserted)` for an edit that replaced
+        `[start, end)` with `inserted` bases; `flip` is for reverse-complement.
+        Either moves the annotations with the sequence — without them, every
+        feature pointed at the wrong bases after any edit, and export wrote them
+        that way (#59). A feature whose own bases were edited is dropped and the
+        user is told which.
+        """
         self._history_for(self._active.id).push(self._active.seq)
+
+        if flip:
+            self._active.annotations = flip_annotations(
+                self._active.annotations, len(self._active.seq)
+            )
+        elif splice is not None:
+            start, end, inserted = splice
+            kept, lost = shift_annotations(
+                self._active.annotations, start=start, end=end, inserted=inserted
+            )
+            self._active.annotations = kept
+            if lost:
+                names = ", ".join(
+                    str(a.qualifiers.get("gene") or a.qualifiers.get("label") or a.feature_type)
+                    for a in lost[:5]
+                )
+                msg += (
+                    f"  ·  {len(lost)} annotation(s) removed because the edit changed "
+                    f"their bases: {names}"
+                )
+
         self._set_active_seq(new_seq)
         self._set_result_highlighter(self._active.molecule_type == MoleculeType.PROTEIN)
         self._result_display.setPlainText(f"// {msg}\n{new_seq}")
@@ -926,17 +971,53 @@ class SequencePanel(QWidget):
         s = seq.upper()
         return (s.count("G") + s.count("C")) / len(s) * 100 if s else 0.0
 
+    def _valid_range(self, start: int, end: int, length: int, what: str) -> bool:
+        """Is [start, end) a usable half-open range within the sequence?
+
+        Nothing checked this, so `Replace` with End=0 evaluated
+        `seq[:start] + rep + seq[0:]` and GREW the record — 20 nt became 32 (#59).
+        """
+        if end <= start:
+            QMessageBox.warning(
+                self, f"{what} needs a range",
+                f"End ({end}) must be greater than Start ({start}).\n\n"
+                "Positions are 0-based and the end is exclusive, so to act on the "
+                f"first ten bases use Start 0, End 10.",
+            )
+            return False
+        if start < 0 or end > length:
+            QMessageBox.warning(
+                self, "Range out of bounds",
+                f"[{start}:{end}] is outside this {length} nt sequence.",
+            )
+            return False
+        return True
+
     def _apply_op(self) -> None:
         if not self._active:
             QMessageBox.warning(self, "No sequence", "Select a sequence first.")
             return
         op = self._op_combo.currentData()
         seq_str = self._active.seq
+        splice: tuple[int, int, int] | None = None
+        flip = False
+
+        # Reverse-complement, complement, transcribe and back-transcribe are all
+        # nucleotide operations. They used to run on a protein sequence without a
+        # word, producing nonsense (#59).
+        if op in NUCLEOTIDE_ONLY_OPS and self._active.molecule_type == MoleculeType.PROTEIN:
+            QMessageBox.warning(
+                self, "Not a nucleotide sequence",
+                f"{self._op_combo.currentText()} needs DNA or RNA; "
+                f"“{self._active.id}” is a protein sequence.",
+            )
+            return
 
         try:
             bio = Seq(seq_str)
             if op == "reverse_complement":
                 result = str(bio.reverse_complement())
+                flip = True
                 msg = "Reverse complement"
             elif op == "complement":
                 result = str(bio.complement())
@@ -953,16 +1034,30 @@ class SequencePanel(QWidget):
             elif op == "insert":
                 pos = self._pos_start.value()
                 ins = self._insert_seq.text().upper()
+                if not 0 <= pos <= len(seq_str):
+                    QMessageBox.warning(
+                        self, "Position out of range",
+                        f"Insert position {pos} is outside 0..{len(seq_str)}.")
+                    return
                 result = seq_str[:pos] + ins + seq_str[pos:]
+                splice = (pos, pos, len(ins))
                 msg = f"Inserted {len(ins)} bases at position {pos}"
             elif op == "delete":
                 start, end = self._pos_start.value(), self._pos_end.value()
+                if not self._valid_range(start, end, len(seq_str), "Delete"):
+                    return
                 result = seq_str[:start] + seq_str[end:]
+                splice = (start, end, 0)
                 msg = f"Deleted [{start}:{end}]"
             elif op == "replace":
                 start, end = self._pos_start.value(), self._pos_end.value()
                 rep = self._insert_seq.text().upper()
+                # Unvalidated, `Replace` with End=0 did seq[:start] + rep + seq[0:],
+                # which GREW the sequence — a 20 nt record became 32 nt (#59).
+                if not self._valid_range(start, end, len(seq_str), "Replace"):
+                    return
                 result = seq_str[:start] + rep + seq_str[end:]
+                splice = (start, end, len(rep))
                 msg = f"Replaced [{start}:{end}] → {len(rep)} bases"
             else:
                 return
@@ -970,7 +1065,7 @@ class SequencePanel(QWidget):
             # In-place edits mutate the active sequence and are undoable;
             # type-changing ops stay non-destructive in the result pane.
             if op in IN_PLACE_OPS:
-                self._commit_edit(result, msg)
+                self._commit_edit(result, msg, splice=splice, flip=flip)
                 return
 
             # Switch result-display highlighter based on what the operation produces
