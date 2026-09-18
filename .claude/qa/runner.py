@@ -21,7 +21,11 @@ import time
 import urllib.request
 import urllib.error
 import urllib.parse
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+import _state  # noqa: E402
 from datetime import datetime
 
 BASE = Path(__file__).parent
@@ -194,34 +198,30 @@ def main():
     print(f"  Results → {out}")
 
     # Update agent_comms
-    comms_path = BASE.parent / "agent_comms.json"
-    if comms_path.exists():
-        with open(comms_path) as f:
-            obj = json.load(f)
-        obj["workflow_state"]["current_phase"] = 4
-        if "execution" not in obj["workflow_state"]["phases_completed"]:
-            obj["workflow_state"]["phases_completed"].append("execution")
-        # Mark scout handoff accepted
-        for msg in obj["messages"]:
-            if msg.get("id") == "msg_1":
-                msg["status"] = "accepted"
-        obj["messages"].append({
-            "id": "msg_2",
-            "from": "runner",
-            "to": "analyst",
-            "type": "handoff",
-            "subject": f"Execution complete — {failed} failures, {errored} errors",
-            "status": "pending",
-            "ts": datetime.utcnow().isoformat() + "Z",
-            "body": (
-                f"Run {run_id} complete. {passed} passed, {failed} failed, {errored} errors, {slow} slow. "
-                f"Results at .claude/qa/runs/{run_id}/actual_outputs.json. "
-                f"Run analyst.py to diff expected vs actual and locate bugs."
-            ),
-        })
-        with open(comms_path, "w") as f:
-            json.dump(obj, f, indent=2)
-        print("✓ agent_comms.json updated")
+    obj = _state.load()
+    obj["workflow_state"]["current_phase"] = 4
+    if "execution" not in obj["workflow_state"]["phases_completed"]:
+        obj["workflow_state"]["phases_completed"].append("execution")
+    # Mark scout handoff accepted
+    for msg in obj["messages"]:
+        if msg.get("id") == "msg_1":
+            msg["status"] = "accepted"
+    obj["messages"].append({
+        "id": "msg_2",
+        "from": "runner",
+        "to": "analyst",
+        "type": "handoff",
+        "subject": f"Execution complete — {failed} failures, {errored} errors",
+        "status": "pending",
+        "ts": datetime.utcnow().isoformat() + "Z",
+        "body": (
+            f"Run {run_id} complete. {passed} passed, {failed} failed, {errored} errors, {slow} slow. "
+            f"Results at .claude/qa/runs/{run_id}/actual_outputs.json. "
+            f"Run analyst.py to diff expected vs actual and locate bugs."
+        ),
+    })
+    _state.save(obj)
+    print("✓ pipeline_state.json updated")
 
     return run_id
 

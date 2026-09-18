@@ -45,6 +45,9 @@ def _load(name: str):
     `if __name__ == "__main__"`, so importing them is side-effect free."""
     import importlib.util
 
+    import sys
+    if str(QA) not in sys.path:
+        sys.path.insert(0, str(QA))
     spec = importlib.util.spec_from_file_location(f"qa_{name}", QA / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -192,3 +195,58 @@ def test_a_different_endpoint_is_a_different_finding() -> None:
 def test_the_fingerprint_is_stable_across_runs() -> None:
     reporter = _load("reporter")
     assert reporter.fingerprint(_finding()) == reporter.fingerprint(_finding())
+
+
+# --- #80: the pipeline's own state, defined once and actually written ---
+
+def test_the_state_path_is_defined_in_one_place() -> None:
+    """Ziggurat flagged agent_comms.json as one path with four namers."""
+    for name in ("scout", "runner", "analyst", "reporter"):
+        source = (QA / f"{name}.py").read_text()
+        assert 'BASE.parent / "agent_comms.json"' not in source, (
+            f"{name}.py still builds its own path to a file it does not own (#80)"
+        )
+        assert "_state" in source, f"{name}.py should use the shared state module"
+
+
+def test_the_state_file_is_not_the_codex_protocol_file() -> None:
+    """Two unrelated protocols must not share a filename.
+
+    The repo root's agent_comms.json is the Claude<->Codex review protocol
+    (`_protocol` + typed messages). The pipeline writes `workflow_state`. Pointing
+    one at the other crashes on a missing key (#80).
+    """
+    state = _load("_state")
+    assert state.STATE_PATH.name != "agent_comms.json"
+    assert state.STATE_PATH.parent == QA, state.STATE_PATH
+
+
+def test_the_state_round_trips(tmp_path, monkeypatch) -> None:
+    state = _load("_state")
+    monkeypatch.setattr(state, "STATE_PATH", tmp_path / "pipeline_state.json")
+
+    fresh = state.load()
+    assert fresh["workflow_state"]["current_phase"] == 0
+    assert fresh["workflow_state"]["phases_completed"] == []
+
+    state.record(3, ["discover", "corpus"], {"id": "msg_1", "from": "scout"})
+    again = state.load()
+    assert again["workflow_state"]["current_phase"] == 3
+    assert again["workflow_state"]["phases_completed"] == ["discover", "corpus"]
+    assert len(again["messages"]) == 1
+
+
+def test_recording_a_phase_twice_does_not_duplicate_it(tmp_path, monkeypatch) -> None:
+    state = _load("_state")
+    monkeypatch.setattr(state, "STATE_PATH", tmp_path / "pipeline_state.json")
+    state.record(1, ["discover"])
+    state.record(2, ["discover", "corpus"])
+    assert state.load()["workflow_state"]["phases_completed"] == ["discover", "corpus"]
+
+
+def test_a_corrupt_state_file_is_replaced_not_fatal(tmp_path, monkeypatch) -> None:
+    state = _load("_state")
+    path = tmp_path / "pipeline_state.json"
+    path.write_text("{not json")
+    monkeypatch.setattr(state, "STATE_PATH", path)
+    assert state.load()["workflow_state"]["current_phase"] == 0

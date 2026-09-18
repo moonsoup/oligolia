@@ -17,6 +17,9 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+import _state  # noqa: E402
+
 BASE = Path(__file__).parent
 RUNS_DIR = BASE / "runs"
 BACKEND_DIR = Path(__file__).parent.parent.parent / "backend" / "routers"
@@ -358,34 +361,30 @@ def main():
     ))
 
     # Update agent_comms
-    comms_path = BASE.parent / "agent_comms.json"
-    if comms_path.exists():
-        with open(comms_path) as f:
-            obj = json.load(f)
-        obj["workflow_state"]["current_phase"] = 6
-        for phase in ["compare", "locate"]:
-            if phase not in obj["workflow_state"]["phases_completed"]:
-                obj["workflow_state"]["phases_completed"].append(phase)
-        for msg in obj["messages"]:
-            if msg.get("id") == "msg_2":
-                msg["status"] = "accepted"
-        obj["messages"].append({
-            "id": "msg_3",
-            "from": "analyst",
-            "to": "reporter",
-            "type": "handoff",
-            "subject": f"{len(findings)} findings ready to report",
-            "status": "pending",
-            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "body": (
-                f"Analysis complete. {len(findings)} findings at "
-                f".claude/qa/runs/{run['run_id']}/findings.json. "
-                f"Run reporter.py to file GitHub issues for unfiled findings."
-            ),
-        })
-        with open(comms_path, "w") as f:
-            json.dump(obj, f, indent=2)
-        print("✓ agent_comms.json updated")
+    obj = _state.load()
+    obj["workflow_state"]["current_phase"] = 6
+    for phase in ["compare", "locate"]:
+        if phase not in obj["workflow_state"]["phases_completed"]:
+            obj["workflow_state"]["phases_completed"].append(phase)
+    for msg in obj["messages"]:
+        if msg.get("id") == "msg_2":
+            msg["status"] = "accepted"
+    obj["messages"].append({
+        "id": "msg_3",
+        "from": "analyst",
+        "to": "reporter",
+        "type": "handoff",
+        "subject": f"{len(findings)} findings ready to report",
+        "status": "pending",
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "body": (
+            f"Analysis complete. {len(findings)} findings at "
+            f".claude/qa/runs/{run['run_id']}/findings.json. "
+            f"Run reporter.py to file GitHub issues for unfiled findings."
+        ),
+    })
+    _state.save(obj)
+    print("✓ pipeline_state.json updated")
 
 
 if __name__ == "__main__":

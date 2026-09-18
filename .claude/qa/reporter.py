@@ -18,6 +18,9 @@ import time
 import subprocess
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+import _state  # noqa: E402
+
 BASE = Path(__file__).parent
 RUNS_DIR = BASE / "runs"
 REPO = "moonsoup/oligolia"
@@ -228,35 +231,33 @@ def main():
         print(f"    skip  {tid}: {reason}")
 
     # Update agent_comms
-    comms_path = BASE.parent / "agent_comms.json"
-    if comms_path.exists():
-        with open(comms_path) as f:
-            obj = json.load(f)
-        obj["workflow_state"]["current_phase"] = None
-        obj["workflow_state"]["last_run"] = data["run_id"]
-        for phase in ["report"]:
-            if phase not in obj["workflow_state"]["phases_completed"]:
-                obj["workflow_state"]["phases_completed"].append(phase)
-        for msg in obj["messages"]:
-            if msg.get("id") == "msg_3":
-                msg["status"] = "accepted"
-        obj["messages"].append({
-            "id": "msg_4",
-            "from": "reporter",
-            "to": "coordinator",
-            "type": "status_update",
-            "subject": f"Run {data['run_id']} complete — {len(filed)} issues filed",
-            "status": "resolved",
-            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "body": (
-                f"All 6 phases complete. Filed {len(filed)} new issues. "
-                f"Skipped {len(skipped)} (duplicates, low severity, known bugs). "
-                f"Full findings: .claude/qa/runs/{data['run_id']}/findings.json"
-            ),
-        })
-        with open(comms_path, "w") as f:
-            json.dump(obj, f, indent=2)
-        print("✓ agent_comms.json updated — all phases complete")
+    obj = _state.load()
+    # The last phase. `None` meant "finished" but read as "unknown" in the
+    # state file; len(PHASES) is unambiguous.
+    obj["workflow_state"]["current_phase"] = len(_state.PHASES)
+    obj["workflow_state"]["last_run"] = data["run_id"]
+    for phase in ["report"]:
+        if phase not in obj["workflow_state"]["phases_completed"]:
+            obj["workflow_state"]["phases_completed"].append(phase)
+    for msg in obj["messages"]:
+        if msg.get("id") == "msg_3":
+            msg["status"] = "accepted"
+    obj["messages"].append({
+        "id": "msg_4",
+        "from": "reporter",
+        "to": "coordinator",
+        "type": "status_update",
+        "subject": f"Run {data['run_id']} complete — {len(filed)} issues filed",
+        "status": "resolved",
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "body": (
+            f"All 6 phases complete. Filed {len(filed)} new issues. "
+            f"Skipped {len(skipped)} (duplicates, low severity, known bugs). "
+            f"Full findings: .claude/qa/runs/{data['run_id']}/findings.json"
+        ),
+    })
+    _state.save(obj)
+    print("✓ pipeline_state.json updated — all phases complete")
 
 
 if __name__ == "__main__":

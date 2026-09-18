@@ -29,6 +29,7 @@ build/work/
 # are ignored.
 .claude/qa/corpus/
 .claude/qa/runs/
+.claude/qa/pipeline_state.json
 .claude/agent_comms.json
 
 # playtest human-mode recordings (lib/qt_recording.py, specialties/genetics.py)
