@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton,
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QTextEdit, QPushButton,
     QLabel, QSpinBox, QDoubleSpinBox, QGroupBox, QTableWidget,
     QTableWidgetItem, QProgressBar, QTabWidget, QMessageBox, QHeaderView,
     QComboBox, QInputDialog, QCheckBox, QSizePolicy,
@@ -25,6 +25,9 @@ from ..workers import Worker, worker_busy
 
 # Presets stored in user config dir
 _PRESETS_FILE = Path.home() / ".oligolia" / "primer_presets.json"
+#: The combo's first row — a prompt, not a preset. Nothing is selected while
+#: this is showing, which is what Delete has to know (#85.2).
+_NO_PRESET = "— select preset —"
 _BUILTIN_PRESETS = {
     "Standard PCR":      {"prod_min": 100,  "prod_max": 2000, "len_min": 18, "len_max": 22, "tm_min": 55.0, "tm_max": 65.0},
     "Long-range PCR":    {"prod_min": 2000, "prod_max": 15000,"len_min": 20, "len_max": 25, "tm_min": 60.0, "tm_max": 68.0},
@@ -72,25 +75,43 @@ class PrimersPanel(QWidget):
         pcr_layout = QVBoxLayout(pcr_widget)
 
         params_grp = QGroupBox("Parameters")
-        params_layout = QHBoxLayout(params_grp)
+        # Six spin boxes and their six labels used to share one QHBoxLayout, so
+        # at 1280 px the labels were the first thing to lose width and
+        # "Product min (bp):" rendered as "Product min (bp" (#85.1). A grid wraps
+        # them onto two rows of three pairs and gives each label column a minimum
+        # taken from the label's own font metrics, so a label is never narrower
+        # than the text it draws — on this platform's UI font or any other.
+        params_layout = QGridLayout(params_grp)
+        params_layout.setHorizontalSpacing(12)
 
-        def spin(label: str, lo: int, hi: int, val: int, parent_layout=params_layout):
-            parent_layout.addWidget(QLabel(label))
+        #: Labelled controls per row before wrapping to the next one.
+        per_row = 3
+
+        def param(index: int, label: str, widget: QWidget) -> QWidget:
+            text = QLabel(label)
+            text.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+            row, col = divmod(index, per_row)
+            params_layout.addWidget(text, row, col * 2)
+            params_layout.addWidget(widget, row, col * 2 + 1)
+            return widget
+
+        def spin(lo: int, hi: int, val: int) -> QSpinBox:
             s = QSpinBox(); s.setRange(lo, hi); s.setValue(val)
-            parent_layout.addWidget(s)
             return s
 
-        self._prod_min = spin("Product min (bp):", 50, 5000, 100)
-        self._prod_max = spin("Product max (bp):", 50, 10000, 600)
-        self._len_min = spin("Primer min:", 15, 35, 18)
-        self._len_max = spin("Primer max:", 15, 35, 22)
-        params_layout.addWidget(QLabel("Tm min:"))
-        self._tm_min = QDoubleSpinBox(); self._tm_min.setRange(30, 90); self._tm_min.setValue(55.0)
-        params_layout.addWidget(self._tm_min)
-        params_layout.addWidget(QLabel("Tm max:"))
-        self._tm_max = QDoubleSpinBox(); self._tm_max.setRange(30, 90); self._tm_max.setValue(65.0)
-        params_layout.addWidget(self._tm_max)
-        params_layout.addStretch()
+        def dspin(lo: float, hi: float, val: float) -> QDoubleSpinBox:
+            s = QDoubleSpinBox(); s.setRange(lo, hi); s.setValue(val)
+            return s
+
+        self._prod_min = param(0, "Product min (bp):", spin(50, 5000, 100))
+        self._prod_max = param(1, "Product max (bp):", spin(50, 10000, 600))
+        self._len_min = param(2, "Primer min:", spin(15, 35, 18))
+        self._len_max = param(3, "Primer max:", spin(15, 35, 22))
+        self._tm_min = param(4, "Tm min:", dspin(30, 90, 55.0))
+        self._tm_max = param(5, "Tm max:", dspin(30, 90, 65.0))
+        # The trailing stretch the old addStretch() gave the row: spare width
+        # goes here rather than into the spin boxes.
+        params_layout.setColumnStretch(per_row * 2, 1)
         pcr_layout.addWidget(params_grp)
 
         # Preset row
@@ -99,15 +120,19 @@ class PrimersPanel(QWidget):
         self._preset_combo = QComboBox()
         self._preset_combo.setMinimumWidth(180)
         self._preset_combo.currentTextChanged.connect(self._load_preset)
+        self._preset_combo.currentTextChanged.connect(self._sync_preset_buttons)
         preset_row.addWidget(self._preset_combo)
         btn_save_preset = QPushButton("Save…")
         btn_save_preset.setObjectName("secondary")
         btn_save_preset.clicked.connect(self._save_preset)
         preset_row.addWidget(btn_save_preset)
-        btn_del_preset = QPushButton("Delete")
-        btn_del_preset.setObjectName("secondary")
-        btn_del_preset.clicked.connect(self._delete_preset)
-        preset_row.addWidget(btn_del_preset)
+        # Destructive, and until #85.2 offered against "— select preset —" and
+        # against built-ins, neither of which it has ever been able to delete.
+        # It keeps its styling for when it does have a target.
+        self._btn_del_preset = QPushButton("Delete")
+        self._btn_del_preset.setObjectName("secondary")
+        self._btn_del_preset.clicked.connect(self._delete_preset)
+        preset_row.addWidget(self._btn_del_preset)
         preset_row.addStretch()
 
         btn_pcr = QPushButton("Design Primers")
@@ -262,12 +287,34 @@ class PrimersPanel(QWidget):
         self._preset_combo.blockSignals(True)
         current = self._preset_combo.currentText()
         self._preset_combo.clear()
-        self._preset_combo.addItem("— select preset —")
+        self._preset_combo.addItem(_NO_PRESET)
         for name in self._all_presets():
             self._preset_combo.addItem(name)
         idx = self._preset_combo.findText(current)
         self._preset_combo.setCurrentIndex(max(0, idx))
         self._preset_combo.blockSignals(False)
+        # Signals were blocked, so Delete has to be told by hand what the combo
+        # now holds — including after a delete emptied the user's own presets.
+        self._sync_preset_buttons()
+
+    def _deletable_preset(self) -> str | None:
+        """The selected preset if Delete could actually delete it, else None.
+
+        The placeholder row is not a preset, and a built-in has always been
+        refused with a warning box — so in both cases Delete has no target.
+        """
+        name = self._preset_combo.currentText()
+        if not name or name == _NO_PRESET or name in _BUILTIN_PRESETS:
+            return None
+        return name if name in self._all_presets() else None
+
+    def _sync_preset_buttons(self, *_: object) -> None:
+        name = self._deletable_preset()
+        self._btn_del_preset.setEnabled(name is not None)
+        self._btn_del_preset.setToolTip(
+            f"Delete the saved preset '{name}'." if name
+            else "Select one of your own saved presets to delete it "
+                 "(built-in presets cannot be deleted).")
 
     def _load_preset(self, name: str) -> None:
         p = self._all_presets().get(name)
@@ -305,8 +352,10 @@ class PrimersPanel(QWidget):
         self._preset_combo.setCurrentText(name)
 
     def _delete_preset(self) -> None:
-        name = self._preset_combo.currentText()
-        if name in _BUILTIN_PRESETS or name == "— select preset —":
+        name = self._deletable_preset()
+        if name is None:
+            # The button is disabled in this state since #85.2; this stays as the
+            # guard for any other caller.
             QMessageBox.warning(self, "Cannot delete", "Built-in presets cannot be deleted.")
             return
         if not _PRESETS_FILE.exists():

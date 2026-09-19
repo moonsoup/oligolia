@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QTextEdit, QLabel, QPushButton, QComboBox, QLineEdit, QGroupBox,
     QFormLayout, QSpinBox, QMessageBox, QFileDialog, QApplication,
     QToolBar, QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView,
-    QDialog, QDialogButtonBox,
+    QDialog, QDialogButtonBox, QSizePolicy,
 )
 from PyQt6.QtCore import Qt, QSettings, pyqtSignal
 from datetime import datetime, timezone
@@ -417,15 +417,28 @@ class SequencePanel(QWidget):
         btn_row = QHBoxLayout()
         btn_open = QPushButton("Open file…")
         btn_open.clicked.connect(self._open_file)
-        btn_del = QPushButton("Remove")
-        btn_del.setObjectName("danger")
-        btn_del.clicked.connect(self._remove_selected)
+        # The most prominent control on an empty panel used to be a bright red
+        # Remove with nothing to remove (#85.2). It keeps its danger styling for
+        # when a sequence is selected; it just cannot be pressed before then.
+        self._btn_remove = QPushButton("Remove")
+        self._btn_remove.setObjectName("danger")
+        self._btn_remove.setEnabled(False)
+        self._btn_remove.setToolTip("Select a sequence in the list to remove it.")
+        self._btn_remove.clicked.connect(self._remove_selected)
+        self._list.currentItemChanged.connect(self._sync_remove_enabled)
+        # takeItem() on the last row leaves no current item; rowsRemoved is what
+        # fires in that case.
+        self._list.model().rowsRemoved.connect(self._sync_remove_enabled)
         btn_row.addWidget(btn_open)
-        btn_row.addWidget(btn_del)
+        btn_row.addWidget(self._btn_remove)
         left_layout.addLayout(btn_row)
 
         # Paste / new sequence
         paste_grp = QGroupBox("Add sequence manually")
+        # Fixed vertically, or the form's three rows get spread over ~300 px of
+        # leftover column height with gaps between them instead of sitting at
+        # their natural spacing — and the sequence list loses that space (#85.3).
+        paste_grp.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         paste_layout = QFormLayout(paste_grp)
         self._paste_id = QLineEdit()
         self._paste_id.setPlaceholderText("e.g. MyGene")
@@ -756,6 +769,10 @@ class SequencePanel(QWidget):
     def _sync_list_placeholder(self, *_: object) -> None:
         """Show the 'nothing here yet' text only while the list is empty."""
         self._list_placeholder.setVisible(self._list.count() == 0)
+
+    def _sync_remove_enabled(self, *_: object) -> None:
+        """Remove is only pressable while it has a sequence to remove (#85.2)."""
+        self._btn_remove.setEnabled(self._list.currentItem() is not None)
 
     def add_sequence(self, seq: Sequence) -> None:
         self._auto_annotate(seq)

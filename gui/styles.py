@@ -110,6 +110,18 @@ QPushButton#secondary:hover {
     background-color: #1d4ed8;
 }
 
+/* An ID selector beats the plain QPushButton:disabled rule above, so without
+   this a disabled Remove stayed bright red and a disabled action stayed green —
+   an accent colour says "press me" whether or not the button can be pressed
+   (#85.2). The accent is kept for when the control does have a target. */
+QPushButton#primary:disabled,
+QPushButton#secondary:disabled,
+QPushButton#danger:disabled {
+    background-color: #1e293b;
+    color: #475569;
+    border: 1px solid #1e293b;
+}
+
 QComboBox {
     background-color: #1e293b;
     color: #e2e8f0;
