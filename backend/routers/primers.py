@@ -9,6 +9,8 @@ from Bio import Restriction
 from Bio.Seq import Seq
 from Bio.SeqUtils import MeltingTemp
 
+from backend.sequence_text import normalize_template
+
 router = APIRouter(prefix="/primers", tags=["primers"])
 
 
@@ -405,7 +407,7 @@ def design_primers(req: PrimerDesignRequest) -> list[PrimerPair]:
     if req.gc_min > req.gc_max:
         raise HTTPException(400, f"gc_min ({req.gc_min}) must be ≤ gc_max ({req.gc_max})")
 
-    template = req.template.upper().replace(" ", "").replace("\n", "")
+    template = normalize_template(req.template)
     if len(template) < req.product_min + req.primer_len_min * 2:
         raise HTTPException(400, "Template too short for requested product size")
 
@@ -594,7 +596,9 @@ class RestrictionRequest(BaseModel):
 def restriction_sites(req: RestrictionRequest) -> list[RestrictionSite]:
     template, enzymes = req.template, req.enzymes
     """Find restriction enzyme cut sites in a sequence."""
-    template = template.upper().replace(" ", "").replace("\n", "")  # noqa: F841 (reassigned from req)
+    # Normalised before any index is computed, so the positions reported here
+    # are in the same coordinate space as /primers/digest's cuts (#86).
+    template = normalize_template(template)  # noqa: F841 (reassigned from req)
     target_enzymes = {k: v for k, v in RESTRICTION_ENZYMES.items()
                       if not enzymes or k in enzymes}
     results = []
@@ -664,7 +668,9 @@ class DigestResult(BaseModel):
 @router.post("/digest", response_model=DigestResult)
 def digest(req: DigestRequest) -> DigestResult:
     """Simulate restriction digest — cut template at all sites for the given enzymes."""
-    template = req.template.upper().replace(" ", "").replace("\n", "")
+    # Normalised the way Bio.Restriction normalises internally, so the string
+    # sliced below is the string its cut positions index into (#86).
+    template = normalize_template(req.template)
     if not template:
         raise HTTPException(400, "Template sequence is required")
     unknown = [e for e in req.enzymes if e not in RESTRICTION_ENZYMES]

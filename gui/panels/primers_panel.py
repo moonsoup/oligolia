@@ -20,6 +20,7 @@ from backend.routers.primers import (
     design_primers, restriction_sites, PrimerDesignRequest, RestrictionRequest,
     describe_tm_conditions, describe_pair_tm,
 )
+from backend.sequence_text import normalize_template
 from ..table_header import fit_header_to_labels
 from ..workers import Worker, worker_busy
 
@@ -368,8 +369,19 @@ class PrimersPanel(QWidget):
             pass
         self._refresh_presets()
 
+    def _template_seq(self) -> str:
+        """The template box read as one molecule.
+
+        The same normalisation the routers apply, so the PCR, Digest and
+        Restriction tabs all analyse the same sequence as each other and as the
+        numbers they display — a GenBank ORIGIN paste or a CRLF sequence used to
+        put the Restriction tab's positions and the Digest tab's cuts in two
+        different coordinate systems (#86).
+        """
+        return normalize_template(self._template.toPlainText())
+
     def _run_pcr(self) -> None:
-        template = self._template.toPlainText().strip().upper().replace(" ", "").replace("\n", "")
+        template = self._template_seq()
         if not template:
             QMessageBox.warning(self, "No template", "Paste a template sequence first.")
             return
@@ -420,7 +432,7 @@ class PrimersPanel(QWidget):
                 self._pcr_table.setItem(i, col, item)
 
     def _run_digest(self) -> None:
-        template = self._template.toPlainText().strip().upper().replace(" ", "").replace("\n", "")
+        template = self._template_seq()
         if not template:
             QMessageBox.warning(self, "No template", "Paste a template sequence first.")
             return
@@ -453,7 +465,7 @@ class PrimersPanel(QWidget):
             self._dig_status.setText(f"Error: {e}")
 
     def _run_restriction(self) -> None:
-        template = self._template.toPlainText().strip().upper().replace(" ", "").replace("\n", "")
+        template = self._template_seq()
         if not template:
             return
         req = RestrictionRequest(template=template, is_circular=self._circular_check.isChecked())
@@ -489,8 +501,15 @@ class PrimersPanel(QWidget):
             self._asm_status.setText("")
 
     def _asm_lines(self) -> list[str]:
-        return [ln.strip().upper().replace(" ", "")
-                for ln in self._asm_input.toPlainText().splitlines() if ln.strip()]
+        """One fragment per line, each normalised like any other template (#86).
+
+        The newline is the separator here, so the lines are split first and the
+        normalisation applied within each; a line that was only layout leaves
+        nothing behind and is dropped, same as a blank one always was.
+        """
+        lines = (normalize_template(ln)
+                 for ln in self._asm_input.toPlainText().splitlines())
+        return [ln for ln in lines if ln]
 
     def _run_assembly(self) -> None:
         from fastapi import HTTPException
