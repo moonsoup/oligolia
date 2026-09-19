@@ -5,6 +5,7 @@ from typing import TextIO, BinaryIO
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 from ..models.sequence import Sequence, MoleculeType, Annotation, Strand
+from .insdc_location import read_location, write_location
 
 
 def _strand(val: int | None) -> Strand:
@@ -34,7 +35,10 @@ def _to_sequence(r: SeqRecord) -> Sequence:
             # Every interval, in file order. A CompoundLocation reports each part;
             # a simple FeatureLocation reports itself as a single part. Reading
             # only start/end collapsed every join() to its outer bounds (#57).
-            parts = [(int(p.start), int(p.end)) for p in feat.location.parts]
+            # `read_location` also keeps what the integers cannot carry: the
+            # `<`/`>` of each boundary, the join-vs-order operator and a part's
+            # remote accession, all of which used to be dropped here (#94).
+            parts, part_details, operator = read_location(feat.location)
         except Exception:
             continue
         annotations.append(Annotation(
@@ -42,6 +46,8 @@ def _to_sequence(r: SeqRecord) -> Sequence:
             start=start,
             end=end,
             parts=parts or [(start, end)],
+            part_details=part_details,
+            location_operator=operator,
             strand=_strand(feat.location.strand),
             qualifiers={k: (v[0] if isinstance(v, list) and len(v) == 1 else v)
                         for k, v in feat.qualifiers.items()},
@@ -78,7 +84,7 @@ def read_embl(source: str | TextIO | BinaryIO) -> list[Sequence]:
 
 def write_genbank(sequences: list[Sequence]) -> str:
     from Bio.Seq import Seq
-    from Bio.SeqFeature import CompoundLocation, FeatureLocation, SeqFeature
+    from Bio.SeqFeature import SeqFeature
     records = []
     for s in sequences:
         seq = Seq(s.seq)
@@ -88,12 +94,13 @@ def write_genbank(sequences: list[Sequence]) -> str:
         for ann in s.annotations:
             strand_val = 1 if ann.strand == Strand.PLUS else -1 if ann.strand == Strand.MINUS else 0
 
-            # Rebuild the real location. More than one part means a join(); the
-            # old writer always emitted a single FeatureLocation over the outer
-            # bounds, which is the export half of #57.
-            parts = ann.parts or [(ann.start, ann.end)]
-            locs = [FeatureLocation(a, b, strand=strand_val) for a, b in parts]
-            location = locs[0] if len(locs) == 1 else CompoundLocation(locs)
+            # Rebuild the real location. More than one part means a compound
+            # location; the old writer always emitted a single FeatureLocation
+            # over the outer bounds, which is the export half of #57. It then
+            # emitted only the coordinates, dropping every partial boundary,
+            # rewriting order() as join() and localising remote parts (#94) —
+            # `write_location` puts all three back.
+            location = write_location(ann, strand_val)
 
             feat = SeqFeature(
                 location,

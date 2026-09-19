@@ -15,21 +15,34 @@ downstream exon and leaves the upstream one alone.
 
 from __future__ import annotations
 
-from ..models.sequence import Annotation, Strand
+from ..models.sequence import Annotation, LocationPart, Strand
+
+#: `<` on a lower boundary becomes `>` on the upper one when the strand is
+#: reflected, and vice versa — the same mapping Biopython's `BeforePosition._flip`
+#: makes (#94).
+_FLIPPED_CLASS = {"before": "after", "after": "before", "exact": "exact"}
 
 
 def _parts_of(ann: Annotation) -> list[tuple[int, int]]:
     return list(ann.parts) if ann.parts else [(ann.start, ann.end)]
 
 
-def _rebuilt(ann: Annotation, parts: list[tuple[int, int]], strand: Strand | None = None) -> Annotation:
+def _rebuilt(
+    ann: Annotation,
+    parts: list[tuple[int, int]],
+    strand: Strand | None = None,
+    part_details: list[LocationPart] | None = None,
+) -> Annotation:
     """A copy of `ann` with new parts, and outer bounds derived from them."""
-    return ann.model_copy(update={
+    update: dict = {
         "parts": parts,
         "start": min(s for s, _e in parts),
         "end": max(e for _s, e in parts),
         "strand": strand if strand is not None else ann.strand,
-    })
+    }
+    if part_details is not None:
+        update["part_details"] = part_details
+    return ann.model_copy(update=update)
 
 
 def shift_annotations(
@@ -109,17 +122,29 @@ def flip_annotations(annotations: list[Annotation], seq_len: int) -> list[Annota
     still extracts the same string, which is what
     `backend/tests/test_reverse_complement_part_order_93.py` asserts against
     `Bio.SeqRecord.reverse_complement(features=True)`.
+
+    A partial boundary travels with the boundary it describes (#94): reflecting
+    `[s, e)` makes the old upper boundary the new lower one, so a `>` on the end
+    comes back as a `<` on the start — exactly what `SimpleLocation._flip` does.
     """
     flipped: list[Annotation] = []
 
     for ann in annotations:
         parts = [(seq_len - p_end, seq_len - p_start) for p_start, p_end in _parts_of(ann)]
+        details = [
+            LocationPart(
+                start_class=_FLIPPED_CLASS.get(d.end_class, "exact"),
+                end_class=_FLIPPED_CLASS.get(d.start_class, "exact"),
+                ref=d.ref,
+            )
+            for d in ann.details_per_part()
+        ]
         if ann.strand == Strand.PLUS:
             strand = Strand.MINUS
         elif ann.strand == Strand.MINUS:
             strand = Strand.PLUS
         else:
             strand = ann.strand  # BOTH / unstranded has no orientation to flip
-        flipped.append(_rebuilt(ann, parts, strand))
+        flipped.append(_rebuilt(ann, parts, strand, details))
 
     return flipped
