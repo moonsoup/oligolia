@@ -1,6 +1,7 @@
 """Sequence alignment panel — pairwise and MSA."""
 
 from __future__ import annotations
+import html
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -68,6 +69,31 @@ def format_alignment_blocks(a1: str, a2: str, width: int = BLOCK_WIDTH) -> str:
         out.append("")
 
     return "\n".join(out).rstrip("\n")
+
+
+def format_aligner_notice(statuses: list) -> str:
+    """One line saying what to install, built from the router's own hint.
+
+    Takes `backend.routers.alignment.AlignerInfo`s. The wording is not restated
+    here: the sentence quotes `hint`, the same string `/alignment/multiple`'s 503
+    quotes, with the aligner's URL turned into a clickable link (#83).
+    """
+    from backend.routers.alignment import DEFAULT_ALGORITHM
+
+    primary = next(
+        (a for a in statuses if a.name == DEFAULT_ALGORITHM),
+        statuses[0] if statuses else None,
+    )
+    if primary is None:  # no aligners known at all — nothing to advise
+        return ""
+    url = html.escape(primary.url, quote=True)
+    hint = html.escape(primary.hint).replace(
+        html.escape(primary.url), f'<a href="{url}">{html.escape(primary.url)}</a>'
+    )
+    return (
+        "No sequence aligner found, so multiple alignment cannot run. "
+        f"Install {hint}, then reopen this tab."
+    )
 
 
 class AlignmentPanel(QWidget):
@@ -140,15 +166,26 @@ class AlignmentPanel(QWidget):
         msa_layout = QVBoxLayout(msa_widget)
 
         msa_layout.addWidget(QLabel("Enter sequences (one per line, format: >ID\\nSEQUENCE or just SEQUENCE):"))
+
+        # Says what to install, before the user pastes anything (#83). Hidden
+        # whenever an aligner is present, so the tab looks exactly as it did.
+        self._msa_notice = QLabel()
+        self._msa_notice.setObjectName("subheading")
+        self._msa_notice.setTextFormat(Qt.TextFormat.RichText)
+        self._msa_notice.setOpenExternalLinks(True)
+        self._msa_notice.setWordWrap(True)
+        self._msa_notice.hide()
+        msa_layout.addWidget(self._msa_notice)
+
         self._msa_input = QTextEdit()
         self._msa_input.setPlaceholderText(">seq1\nATGGTGCACCTGACT\n>seq2\nATGGTGCATCTGACT\n>seq3\nATGGTGCACCTGGCT")
         self._msa_input.setFont(QFont("JetBrains Mono", 11))
         msa_layout.addWidget(self._msa_input)
 
-        btn_msa = QPushButton("Run MSA (requires MUSCLE)")
-        btn_msa.setObjectName("primary")
-        btn_msa.clicked.connect(self._run_msa)
-        msa_layout.addWidget(btn_msa)
+        self._btn_msa = QPushButton("Run MSA (requires MUSCLE)")
+        self._btn_msa.setObjectName("primary")
+        self._btn_msa.clicked.connect(self._run_msa)
+        msa_layout.addWidget(self._btn_msa)
 
         self._msa_progress = QProgressBar()
         self._msa_progress.setRange(0, 0)
@@ -170,9 +207,46 @@ class AlignmentPanel(QWidget):
         self._identity_table.setMaximumHeight(150)
         msa_layout.addWidget(self._identity_table)
 
-        tabs.addTab(msa_widget, "Multiple Sequence Alignment")
+        self._msa_tab_index = tabs.addTab(msa_widget, "Multiple Sequence Alignment")
 
         layout.addWidget(tabs)
+        self._tabs = tabs
+        tabs.currentChanged.connect(self._on_tab_changed)
+        self._refresh_aligner_availability()
+
+    # ── Aligner availability ─────────────────────────────────────────────────
+
+    def _on_tab_changed(self, index: int) -> None:
+        # Re-check on every visit, so someone who installs MUSCLE while the app
+        # is open does not have to restart it (#83).
+        if index == self._msa_tab_index:
+            self._refresh_aligner_availability()
+
+    def showEvent(self, event) -> None:  # noqa: N802 — Qt's spelling
+        super().showEvent(event)
+        if self._tabs.currentIndex() == self._msa_tab_index:
+            self._refresh_aligner_availability()
+
+    def _refresh_aligner_availability(self) -> None:
+        """Enable or disable the MSA controls from the router's own detection.
+
+        Imported here rather than at module import for the same reason `_do_msa`
+        does it: the panel is built at startup and the router pulls in FastAPI.
+        """
+        from backend.routers.alignment import DEFAULT_ALGORITHM, aligner_statuses
+
+        statuses = aligner_statuses()
+        ready = any(a.available for a in statuses)
+
+        self._msa_input.setEnabled(ready)
+        self._btn_msa.setEnabled(ready)
+        notice = "" if ready else format_aligner_notice(statuses)
+        self._msa_notice.setText(notice)
+        self._msa_notice.setVisible(not ready)
+        # Plain text, because a tooltip does not render the anchor usefully.
+        self._btn_msa.setToolTip("" if ready else next(
+            (a.hint for a in statuses if a.name == DEFAULT_ALGORITHM), ""
+        ))
 
     def _run_pairwise(self) -> None:
         s1 = self._seq1.toPlainText().strip().upper().replace(" ", "").replace("\n", "")
@@ -272,10 +346,10 @@ class AlignmentPanel(QWidget):
         """
         from fastapi import HTTPException
 
-        from backend.routers.alignment import MSARequest, multiple_align
+        from backend.routers.alignment import DEFAULT_ALGORITHM, MSARequest, multiple_align
 
         try:
-            res = multiple_align(MSARequest(sequences=seqs, algorithm="muscle"))
+            res = multiple_align(MSARequest(sequences=seqs, algorithm=DEFAULT_ALGORITHM))
         except HTTPException as e:
             # Worker.error stringifies whatever is raised; HTTPException's own repr
             # buries the message, so surface just the detail.

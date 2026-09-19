@@ -1,5 +1,7 @@
 """Sequence alignment endpoints — pairwise and multiple sequence alignment."""
 
+import shutil
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from Bio import Align
@@ -27,15 +29,35 @@ class PairwiseResult(BaseModel):
     alignment_length: int
 
 
+#: The aligner used unless a caller asks for another, and the one the GUI drives.
+#: Named here so the panel can describe it without hard-coding its name (#83).
+DEFAULT_ALGORITHM = "muscle"
+
+
 class MSARequest(BaseModel):
     sequences: list[dict]  # [{"id": str, "seq": str}]
-    algorithm: str = "muscle"  # muscle | clustalw
+    algorithm: str = DEFAULT_ALGORITHM  # muscle | clustalw
 
 
 class MSAResult(BaseModel):
     aligned: list[dict]  # [{"id": str, "aligned_seq": str}]
     consensus: str
     identity_matrix: list[list[float]]
+
+
+class AlignerInfo(BaseModel):
+    """Whether one external aligner can be run, and what to do if it cannot."""
+
+    name: str
+    available: bool
+    path: str | None  # resolved executable, or None when nothing was found
+    hint: str  # the same install hint the 503 quotes
+    url: str  # where to get it
+
+
+class AlignersResult(BaseModel):
+    aligners: list[AlignerInfo]
+    any_available: bool
 
 
 @router.post("/pairwise", response_model=PairwiseResult)
@@ -78,11 +100,68 @@ def pairwise_align(req: PairwiseRequest) -> PairwiseResult:
     )
 
 
+#: Homepage per aligner, quoted inside the hint below and offered on its own so a
+#: GUI can turn it into a link without parsing the sentence back apart.
+_ALIGNER_URLS = {
+    "muscle": "https://drive5.com/muscle",
+    "clustalw": "http://www.clustal.org/clustal2",
+}
+
 #: Where to get each aligner, so a 503 can tell the user what to do.
 _ALIGNER_HELP = {
-    "muscle": "MUSCLE v5 (`brew install muscle`, or https://drive5.com/muscle)",
-    "clustalw": "ClustalW (`brew install clustal-w`, or http://www.clustal.org/clustal2)",
+    "muscle": f"MUSCLE v5 (`brew install muscle`, or {_ALIGNER_URLS['muscle']})",
+    "clustalw": f"ClustalW (`brew install clustal-w`, or {_ALIGNER_URLS['clustalw']})",
 }
+
+
+def aligner_status(name: str) -> AlignerInfo:
+    """Is `name` runnable right now, and what to install if it is not.
+
+    The one place that answers the question. `/multiple` asks it before shelling
+    out and `/aligners` (and through it the MSA panel) asks it up front, so the
+    tab cannot say "ready" about an aligner the run path would 503 on, and cannot
+    advise an install the error names differently (#83).
+    """
+    path = shutil.which(name)
+    return AlignerInfo(
+        name=name,
+        available=path is not None,
+        path=path,
+        hint=_ALIGNER_HELP[name],
+        url=_ALIGNER_URLS[name],
+    )
+
+
+def aligner_statuses() -> list[AlignerInfo]:
+    """`aligner_status` for every aligner `/multiple` knows how to drive."""
+    return [aligner_status(name) for name in _ALIGNER_HELP]
+
+
+def _not_installed(algorithm: str) -> HTTPException:
+    """The 503 for a missing aligner — worded once, raised from both paths."""
+    return HTTPException(
+        503,
+        f"{algorithm} is not installed, so these sequences cannot be aligned. "
+        f"Install {_ALIGNER_HELP[algorithm]} and try again. "
+        "Nothing is returned rather than an approximation, because a padded "
+        "copy of the input is indistinguishable from a real alignment (#58).",
+    )
+
+
+@router.get("/aligners", response_model=AlignersResult)
+def list_aligners() -> AlignersResult:
+    """Report aligner availability without running an alignment.
+
+    Additive: `/multiple` behaves exactly as it did, including its 503. This
+    exists so the MSA tab can disable itself and name the install *before* the
+    user pastes sequences and presses Run, rather than after (#83, from #76's
+    option C).
+    """
+    statuses = aligner_statuses()
+    return AlignersResult(
+        aligners=statuses,
+        any_available=any(a.available for a in statuses),
+    )
 
 
 @router.post("/multiple", response_model=MSAResult)
@@ -105,6 +184,12 @@ def multiple_align(req: MSARequest) -> MSAResult:
         raise HTTPException(
             400, f"Unknown algorithm {req.algorithm!r}; expected one of {sorted(_ALIGNER_HELP)}"
         )
+    if not aligner_status(req.algorithm).available:
+        # Same answer the panel got up front, same 503 the FileNotFoundError arm
+        # below raises — asking first only means it is raised without writing a
+        # temp file first. The arm below stays as the backstop for an executable
+        # that exists on PATH but cannot actually be exec'd.
+        raise _not_installed(req.algorithm)
 
     import subprocess
     import tempfile
@@ -149,13 +234,7 @@ def multiple_align(req: MSARequest) -> MSAResult:
             )
 
     except FileNotFoundError:
-        raise HTTPException(
-            503,
-            f"{req.algorithm} is not installed, so these sequences cannot be aligned. "
-            f"Install {_ALIGNER_HELP[req.algorithm]} and try again. "
-            "Nothing is returned rather than an approximation, because a padded "
-            "copy of the input is indistinguishable from a real alignment (#58).",
-        ) from None
+        raise _not_installed(req.algorithm) from None
     except subprocess.TimeoutExpired:
         # Was uncaught, so a slow aligner produced a 500 with no explanation.
         raise HTTPException(
