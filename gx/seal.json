@@ -22,5 +22,31 @@
       "digest": "759d0593e820a4393d6881d232598450d2416c71dbba13dd84cb2ec71bb87421"
     }
   ],
-  "digest": "3beb4638725a55e7a0db018ff8cb465d12c7b20a982a78642acd5d4074eda42c"
+  "digest": "3beb4638725a55e7a0db018ff8cb465d12c7b20a982a78642acd5d4074eda42c",
+  "support": [
+    {
+      "file": "gx/conftest.py",
+      "digest": "a097f944f61364bade5e7a11425e697b6959c8d50d05c8b50456b7bce59c0568"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/Data/IUPACData.py",
+      "digest": "897fb42f1bd6e3f837be6918ae6c54e77e61013b284cbabd4e7dfc01723e1a91"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/Restriction/Restriction.py",
+      "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/Restriction/Restriction_Dictionary.py",
+      "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/LICENSE.rst",
+      "digest": "d4bbb0c4e5345e6f2508c3b93fb247fcb2db95783fb8a584c23cd88e3c03df6c"
+    },
+    {
+      "file": "gx/corpus/inputs/puc19_L09137.2.txt",
+      "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+    }
+  ]
 }
