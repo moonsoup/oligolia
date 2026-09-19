@@ -1,0 +1,508 @@
+[
+  {
+    "id": "CO-1",
+    "statement": "Loading a GenBank file converts every feature location from the file's 1-based inclusive coordinates to 0-based half-open in-memory intervals: for NC_001699.1 (JC polyomavirus, 5130 bp, circular) the subject's 28 Annotations must carry exactly the intervals and strands listed below, in file order, where a file location a..b becomes the interval (a-1, b).",
+    "numeric": true,
+    "parameters": {
+      "input": "gx/corpus/inputs/NC_001699.1.gb",
+      "record_length": 5130,
+      "is_circular": true,
+      "feature_count": 28,
+      "conversion": "file a..b (1-based, both ends inclusive) -> in-memory (a-1, b) (0-based, end exclusive)",
+      "expected": [
+        {"i": 0, "type": "source", "file_location": "1..5130", "parts": [[0, 5130]], "strand": "+"},
+        {"i": 1, "type": "rep_origin", "file_location": "join(5118..5130,1..12)", "parts": [[5117, 5130], [0, 12]], "strand": "+"},
+        {"i": 2, "type": "rep_origin", "file_location": "1..12", "parts": [[0, 12]], "strand": "+"},
+        {"i": 3, "type": "repeat_region", "file_location": "11..109", "parts": [[10, 109]], "strand": "+"},
+        {"i": 4, "type": "repeat_region", "file_location": "110..207", "parts": [[109, 207]], "strand": "+"},
+        {"i": 5, "type": "prim_transcript", "file_location": "163..2594", "parts": [[162, 2594]], "strand": "+"},
+        {"i": 6, "type": "gene", "file_location": "277..492", "parts": [[276, 492]], "strand": "+"},
+        {"i": 7, "type": "CDS", "file_location": "277..492", "parts": [[276, 492]], "strand": "+"},
+        {"i": 8, "type": "intron", "file_location": "493..1426", "parts": [[492, 1426]], "strand": "+"},
+        {"i": 9, "type": "intron", "file_location": "493..521", "parts": [[492, 521]], "strand": "+"},
+        {"i": 10, "type": "gene", "file_location": "526..1560", "parts": [[525, 1560]], "strand": "+"},
+        {"i": 11, "type": "CDS", "file_location": "526..1560", "parts": [[525, 1560]], "strand": "+"},
+        {"i": 12, "type": "gene", "file_location": "883..1560", "parts": [[882, 1560]], "strand": "+"},
+        {"i": 13, "type": "CDS", "file_location": "883..1560", "parts": [[882, 1560]], "strand": "+"},
+        {"i": 14, "type": "gene", "file_location": "1469..2533", "parts": [[1468, 2533]], "strand": "+"},
+        {"i": 15, "type": "CDS", "file_location": "1469..2533", "parts": [[1468, 2533]], "strand": "+"},
+        {"i": 16, "type": "prim_transcript", "file_location": "complement(2527..5115)", "parts": [[2526, 5115]], "strand": "-"},
+        {"i": 17, "type": "regulatory", "file_location": "complement(2548..2553)", "parts": [[2547, 2553]], "strand": "-"},
+        {"i": 18, "type": "regulatory", "file_location": "2568..2573", "parts": [[2567, 2573]], "strand": "+"},
+        {"i": 19, "type": "gene", "file_location": "complement(2603..5013)", "parts": [[2602, 5013]], "strand": "-"},
+        {"i": 20, "type": "CDS", "file_location": "complement(join(2603..4426,4771..5013))", "parts": [[4770, 5013], [2602, 4426]], "strand": "-"},
+        {"i": 21, "type": "exon", "file_location": "complement(<2603..4426)", "parts": [[2602, 4426]], "strand": "-"},
+        {"i": 22, "type": "intron", "file_location": "complement(4427..4770)", "parts": [[4426, 4770]], "strand": "-"},
+        {"i": 23, "type": "intron", "file_location": "complement(4427..4493)", "parts": [[4426, 4493]], "strand": "-"},
+        {"i": 24, "type": "gene", "file_location": "complement(4495..5013)", "parts": [[4494, 5013]], "strand": "-"},
+        {"i": 25, "type": "CDS", "file_location": "complement(4495..5013)", "parts": [[4494, 5013]], "strand": "-"},
+        {"i": 26, "type": "repeat_region", "file_location": "5074..5090", "parts": [[5073, 5090]], "strand": "+"},
+        {"i": 27, "type": "rep_origin", "file_location": "5118..5130", "parts": [[5117, 5130]], "strand": "+"}
+      ]
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/SeqFeature.py#thus a GenBank entry of 123..150 (one based counting) becomes a location",
+        "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/GenBank/__init__.py#class _FeatureConsumer(_BaseGenBankConsumer):",
+        "digest": "789ff8cd3c44d9332c691c9a52dc7d211287ab323f9e94a6a01b181e66aa1417"
+      },
+      {
+        "anchor": "insdc/FT_current.txt#340..565                  Points to a continuous range of bases bounded by and",
+        "digest": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#     CDS             complement(join(2603..4426,4771..5013))",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO-2",
+    "statement": "Exporting converts back the other way, losslessly: for every feature of NC_001699.1 and AF071878.1, re-reading the subject's own GenBank export with Bio.SeqIO must give the same integer intervals, the same part order and the same strand as reading the original file — i.e. the round trip through the subject's 0-based half-open model is the identity on coordinates, and every feature's extracted subsequence is byte-identical to the one extracted from the original record.",
+    "numeric": true,
+    "parameters": {
+      "inputs": ["gx/corpus/inputs/NC_001699.1.gb", "gx/corpus/inputs/AF071878.1.gb"],
+      "conversion": "in-memory (s, e) -> file (s+1)..e",
+      "compared": "[(int(p.start), int(p.end)) for p in feature.location.parts], feature.location.strand, str(feature.extract(record.seq))",
+      "oracle": "Bio.SeqIO.read on the pinned bytes vs Bio.SeqIO.read on the subject's export",
+      "expected_mismatches": 0
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/SeqIO/InsdcIO.py#def _insdc_location_string(location, rec_length):",
+        "digest": "2c12bd14c507928e931b17bcd5ece6a44175479aa17e9efd7b1fec40d8b770a9"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/SeqFeature.py#    def extract(self, parent_sequence, references=None):",
+        "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO-3",
+    "statement": "A join() keeps every part, in order, across load and export — including an origin-spanning join on a circular record, which INSDC documents as the way a feature that crosses the origin is written (`CDS join(2004..2195,3..20)`). NC_001699.1's `rep_origin join(5118..5130,1..12)` and AF071878.1's `stem_loop join(1975..1993,1..19)` must survive with both parts, in that order, and the exported record must still say `circular`.",
+    "numeric": true,
+    "parameters": {
+      "cases": [
+        {
+          "input": "gx/corpus/inputs/NC_001699.1.gb",
+          "feature_index": 1,
+          "type": "rep_origin",
+          "file_location": "join(5118..5130,1..12)",
+          "parts": [[5117, 5130], [0, 12]],
+          "part_lengths": [13, 12],
+          "total_length": 25,
+          "record_length": 5130
+        },
+        {
+          "input": "gx/corpus/inputs/AF071878.1.gb",
+          "feature_index": 1,
+          "type": "stem_loop",
+          "file_location": "join(1975..1993,1..19)",
+          "parts": [[1974, 1993], [0, 19]],
+          "part_lengths": [19, 19],
+          "total_length": 38,
+          "record_length": 1993
+        }
+      ],
+      "topology_after_export": "circular",
+      "outer_bounds_note": "min/max across parts is the whole molecule (0, record_length) for an origin-spanning feature; that is the documented meaning of Annotation.start/end, so the parts list is what must carry the truth."
+    },
+    "sources": [
+      {
+        "anchor": "insdc/FT_current.txt#join(12..78,134..202)     Regions 12 to 78 and 134 to 202 should be joined to form",
+        "digest": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444"
+      },
+      {
+        "anchor": "insdc/FT_current.txt#CDS             join(2004..2195,3..20)",
+        "digest": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#     rep_origin      join(5118..5130,1..12)",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      },
+      {
+        "anchor": "inputs/AF071878.1.gb#     stem_loop       join(1975..1993,1..19)",
+        "digest": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO-4",
+    "statement": "complement() and complement(join()) keep their strand and their part order. NC_001699.1's `CDS complement(join(2603..4426,4771..5013))` loads as a minus-strand feature whose parts are in 5'-to-3' feature order — Biopython's writer states the convention explicitly ('we expect the CompoundLocation and its parts to all be marked as strand == -1, and to be in the order 19:100 then 0:10'), i.e. descending on the minus strand — and must export as `complement(join(2603..4426,4771..5013))` again, with the exon whose bases are 4771..5013 read first.",
+    "numeric": true,
+    "parameters": {
+      "input": "gx/corpus/inputs/NC_001699.1.gb",
+      "feature_index": 20,
+      "file_location": "complement(join(2603..4426,4771..5013))",
+      "in_memory_parts": [[4770, 5013], [2602, 4426]],
+      "strand": "-",
+      "exon_lengths_in_reading_order": [243, 1824],
+      "extract_length": 2067,
+      "extract_first_60": "ATGGACAAAGTGCTGAATAGGGAGGAATCCATGGAGCTTATGGATTTATTAGGCCTTGAT",
+      "simple_complement_features": [16, 17, 19, 21, 22, 23, 24, 25],
+      "exported_location_expected": "complement(join(2603..4426,4771..5013))"
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/SeqIO/InsdcIO.py#strand == -1, and to be in the order 19:100 then 0:10.",
+        "digest": "2c12bd14c507928e931b17bcd5ece6a44175479aa17e9efd7b1fec40d8b770a9"
+      },
+      {
+        "anchor": "insdc/FT_current.txt#complement(join(2691..4571,4918..5163))",
+        "digest": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#     CDS             complement(join(2603..4426,4771..5013))",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO-5",
+    "statement": "Partial boundaries survive the round trip. INSDC gives `<` and `>` a meaning no exact coordinate carries — `<1..888` means the feature starts before the first sequenced base — so a record whose file says `<108..1007` must not be exported as `108..1007`. The three partial boundaries in the pinned real records must still be partial in the subject's export.",
+    "numeric": true,
+    "parameters": {
+      "cases": [
+        {"input": "gx/corpus/inputs/AF071878.1.gb", "feature_index": 2, "type": "gene", "file_location": "<108..1007", "partial_end": "5-prime"},
+        {"input": "gx/corpus/inputs/AF071878.1.gb", "feature_index": 3, "type": "CDS", "file_location": "<108..1007", "partial_end": "5-prime"},
+        {"input": "gx/corpus/inputs/AF071878.1.gb", "feature_index": 6, "type": "gene", "file_location": "complement(1240..>1974)", "partial_end": "3-prime-on-minus-strand"},
+        {"input": "gx/corpus/inputs/AF071878.1.gb", "feature_index": 7, "type": "CDS", "file_location": "complement(1240..>1974)", "partial_end": "3-prime-on-minus-strand"},
+        {"input": "gx/corpus/inputs/NC_001699.1.gb", "feature_index": 21, "type": "exon", "file_location": "complement(<2603..4426)", "partial_end": "lower-boundary-on-minus-strand"}
+      ],
+      "detected_by": "type(location.start) is Bio.SeqFeature.BeforePosition / type(location.end) is AfterPosition, or the literal '<'/'>' in the exported FEATURES block",
+      "why_int_comparison_misses_it": "BeforePosition(5) == ExactPosition(5) is True, so any check that compares int(start) cannot see the loss."
+    },
+    "sources": [
+      {
+        "anchor": "insdc/FT_current.txt#<1..888                   The feature starts before the first sequenced base and",
+        "digest": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444"
+      },
+      {
+        "anchor": "insdc/FT_current.txt#1..>888                   The feature starts at the first sequenced base and",
+        "digest": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/SeqFeature.py#class BeforePosition(int, Position):",
+        "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/SeqFeature.py#class AfterPosition(int, Position):",
+        "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+      },
+      {
+        "anchor": "inputs/AF071878.1.gb#     CDS             complement(1240..>1974)",
+        "digest": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#     exon            complement(<2603..4426)",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO-6",
+    "statement": "order() must not be exported as join(). INSDC defines them as different assertions — join means the elements 'should be joined (placed end-to-end) to form one contiguous sequence', order means only that they 'can be found in the specified order ... but nothing is implied about the reasonableness about joining them' — so rewriting one as the other changes what the record claims.",
+    "numeric": false,
+    "parameters": {
+      "probe_location": "order(11..20,51..60)",
+      "probe_bases": "the first 300 bases of gx/corpus/inputs/AF071878.1.gb, so the record under test carries real sequence",
+      "expected_exported_operator": "order",
+      "companion_control": "join(101..110,141..150)",
+      "companion_control_note": "a real join() in the same record must still export as join(): fixing order() must not be done by breaking join()"
+    },
+    "sources": [
+      {
+        "anchor": "insdc/FT_current.txt#order(location,location, ... location)",
+        "digest": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/SeqFeature.py#class CompoundLocation(Location):",
+        "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO-7",
+    "statement": "A remote reference part — INSDC's `J00194.1:100..202`, 'bases 100 to 202, inclusive, in the entry ... with primary accession number J00194' — must be preserved or the feature rejected. It must never be exported as a bare local interval, because that silently reassigns the feature to this record's own bases 100..202.",
+    "numeric": false,
+    "parameters": {
+      "probe_location": "join(201..210,J00194.1:100..202)",
+      "probe_bases": "the first 300 bases of gx/corpus/inputs/AF071878.1.gb",
+      "remote_accession": "J00194.1",
+      "forbidden_export": "join(201..210,100..202)"
+    },
+    "sources": [
+      {
+        "anchor": "insdc/FT_current.txt#join(1..100,J00194.1:100..202)",
+        "digest": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444"
+      },
+      {
+        "anchor": "insdc/FT_current.txt#J00194.1:100..202         Points to bases 100 to 202, inclusive, in the entry (in",
+        "digest": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO-8",
+    "statement": "An edit that does not touch a feature's bases leaves that feature's extracted subsequence byte-identical. For NC_001699.1, after each of the pinned edits below, every feature the edit does not overlap must extract exactly the string it extracted from the unedited record.",
+    "numeric": true,
+    "parameters": {
+      "input": "gx/corpus/inputs/NC_001699.1.gb",
+      "edits": [
+        {"name": "insert_30_at_3000", "start": 3000, "end": 3000, "inserted": 30, "inserted_bases": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "delta": 30},
+        {"name": "insert_1_at_120", "start": 120, "end": 120, "inserted": 1, "inserted_bases": "A", "delta": 1},
+        {"name": "delete_100_at_2100", "start": 2100, "end": 2200, "inserted": 0, "delta": -100},
+        {"name": "replace_50_with_10_at_1600", "start": 1600, "end": 1650, "inserted": 10, "inserted_bases": "AAAAAAAAAA", "delta": -40}
+      ],
+      "untouched_definition": "a feature is untouched by [start, end) when no part (p_start, p_end) satisfies p_start < end and p_end > start; for an insert (start == end) a feature is untouched when no part satisfies p_start < start < p_end",
+      "oracle": "str(feature.extract(record.seq)) computed from the pinned bytes with Bio.SeqIO before the edit",
+      "expected_mismatches": 0
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/SeqFeature.py#    def extract(self, parent_sequence, references=None):",
+        "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#     rep_origin      join(5118..5130,1..12)",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO-9",
+    "statement": "A feature downstream of an insert or delete shifts by exactly the net length change, and a feature upstream does not move — checked by re-deriving each interval by index from the raw sequence, not by the subject's own arithmetic. For each pinned edit, a part (p_start, p_end) entirely at or after the edit end becomes (p_start + delta, p_end + delta) and a part entirely at or before the edit start is unchanged, where delta = inserted - (end - start).",
+    "numeric": true,
+    "parameters": {
+      "input": "gx/corpus/inputs/NC_001699.1.gb",
+      "edits": "the four edits pinned in CO-8",
+      "worked_example": {
+        "edit": "insert_30_at_3000",
+        "delta": 30,
+        "feature_index": 1,
+        "before": [[5117, 5130], [0, 12]],
+        "after": [[5147, 5160], [0, 12]],
+        "exported_before": "join(5118..5130,1..12)",
+        "exported_after": "join(5148..5160,1..12)"
+      },
+      "second_worked_example": {
+        "edit": "delete_100_at_2100",
+        "delta": -100,
+        "feature_index": 26,
+        "before": [[5073, 5090]],
+        "after": [[4973, 4990]],
+        "exported_after": "4974..4990"
+      },
+      "oracle": "the shifted interval re-derived by index: new_seq[p_start + delta : p_end + delta] must equal old_seq[p_start : p_end]"
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/SeqFeature.py#thus a GenBank entry of 123..150 (one based counting) becomes a location",
+        "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#     repeat_region   5074..5090",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO-10",
+    "statement": "A feature whose bases are entirely deleted must be reported as lost, not kept. Deleting exactly [5073, 5090) from NC_001699.1 — the whole of `repeat_region 5074..5090` — leaves no bases for that feature to describe, so it must appear in the dropped list. It must not survive as a zero-length annotation, which the exporter renders as the INSDC between-position `5073^5074`, a location that per the Feature Table 'points to a site between bases' and asserts something the original record never said.",
+    "numeric": true,
+    "parameters": {
+      "input": "gx/corpus/inputs/NC_001699.1.gb",
+      "edit": {"start": 5073, "end": 5090, "inserted": 0, "delta": -17},
+      "feature_index": 26,
+      "feature_type": "repeat_region",
+      "feature_parts_before": [[5073, 5090]],
+      "expected_dropped_count": 1,
+      "forbidden_exported_location": "5073^5074",
+      "companion_cases": [
+        {"name": "exact_delete_of_intron_493..521", "start": 492, "end": 521, "feature_index": 9, "parts_before": [[492, 521]], "forbidden_exported_location": "492^493"},
+        {"name": "exact_delete_of_rep_origin_1..12", "start": 0, "end": 12, "feature_index": 2, "parts_before": [[0, 12]], "forbidden_exported_location": "0^1"}
+      ],
+      "every_exported_location_must_name_a_real_base": "a GenBank location counts from 1, so no exported location may contain the token 0; deleting the record's first 12 bases must not produce `0^1`."
+    },
+    "sources": [
+      {
+        "anchor": "insdc/FT_current.txt#123^124                   Points to a site between bases 123 and 124",
+        "digest": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#     repeat_region   5074..5090",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO-11",
+    "statement": "A feature that spans an edit is either adjusted so everything it asserts is still true, or reported as lost — never kept with a stale assertion. Deleting one base inside NC_001699.1's `CDS 526..1560` changes that CDS's own bases, so either the feature is dropped, or its `/translation` qualifier is updated; keeping `526..1559` (1034 bases, not a multiple of three) with the original 344-residue `/translation` exports a record whose stated protein does not translate from its stated bases.",
+    "numeric": true,
+    "parameters": {
+      "input": "gx/corpus/inputs/NC_001699.1.gb",
+      "edit": {"operation": "delete", "start": 700, "end": 701, "inserted": 0, "delta": -1},
+      "feature_index": 11,
+      "feature_type": "CDS",
+      "parts_before": [[525, 1560]],
+      "length_before": 1035,
+      "length_after_if_adjusted": 1034,
+      "length_after_is_multiple_of_three": false,
+      "declared_translation_prefix": "MGAALALLGDLVATVSEAAA",
+      "acceptable_outcomes": [
+        "the CDS is in the dropped list",
+        "the CDS is kept and its /translation equals str(extract.translate(table=1, to_stop=True)) of the edited bases"
+      ],
+      "translation_table": 1,
+      "companion_case": {"name": "replace_inside_CDS_1469..2533", "start": 1700, "end": 1710, "inserted": 10, "delta": 0, "feature_index": 15}
+    },
+    "sources": [
+      {
+        "anchor": "insdc/FT_current.txt#join(12..78,134..202)     Regions 12 to 78 and 134 to 202 should be joined to form",
+        "digest": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/SeqFeature.py#    def extract(self, parent_sequence, references=None):",
+        "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#     CDS             526..1560",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO-12",
+    "statement": "Reverse-complementing a record maps every feature onto the new strand without changing what the feature reads: for every feature, `extract` on the reverse-complemented record must return exactly the string `extract` returned on the original record, because reverse-complementing a molecule does not change which bases a gene is made of or the order it reads them in. This must hold for compound features too — a spliced CDS's exons must still be listed in 5'-to-3' feature order, which for a minus-strand CompoundLocation means descending coordinates.",
+    "numeric": true,
+    "parameters": {
+      "input": "gx/corpus/inputs/NC_001699.1.gb",
+      "record_length": 5130,
+      "interval_map": "[s, e) on the forward strand becomes [L - e, L - s) on the reverse complement, L = 5130",
+      "feature_count": 28,
+      "expected_mismatches": 0,
+      "compound_features": [
+        {
+          "feature_index": 20,
+          "type": "CDS",
+          "parts_before": [[4770, 5013], [2602, 4426]],
+          "strand_before": "-",
+          "parts_after_expected": [[117, 360], [704, 2528]],
+          "strand_after": "+",
+          "exported_after_expected": "join(118..360,705..2528)",
+          "extract_length": 2067,
+          "extract_first_60": "ATGGACAAAGTGCTGAATAGGGAGGAATCCATGGAGCTTATGGATTTATTAGGCCTTGAT"
+        },
+        {
+          "feature_index": 1,
+          "type": "rep_origin",
+          "parts_before": [[5117, 5130], [0, 12]],
+          "strand_before": "+",
+          "parts_after_expected": [[0, 13], [5118, 5130]],
+          "strand_after": "-",
+          "exported_after_expected": "complement(join(5119..5130,1..13))",
+          "extract": "GGAGGCGGAGGCGGCCTCGGCCTCC"
+        }
+      ],
+      "note": "applying the map twice is the identity for any part order, so a flip-flip round trip cannot see an order error; the extract is what pins it."
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/SeqIO/InsdcIO.py#strand == -1, and to be in the order 19:100 then 0:10.",
+        "digest": "2c12bd14c507928e931b17bcd5ece6a44175479aa17e9efd7b1fec40d8b770a9"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/SeqFeature.py#    def extract(self, parent_sequence, references=None):",
+        "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+      },
+      {
+        "anchor": "insdc/FT_current.txt#complement(location)",
+        "digest": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#     CDS             complement(join(2603..4426,4771..5013))",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO-13",
+    "statement": "The GenBank and the EMBL serialisation of one INSDC record describe the same molecule to the subject. For AF071878.1 — NCBI's GenBank flat file and EBI's own EMBL flat file, each fetched from its archive — `read_genbank` and `read_embl` must return the same sequence, the same length, the same topology, and for every feature key present in both files the same parts, strand and extracted subsequence.",
+    "numeric": true,
+    "parameters": {
+      "inputs": ["gx/corpus/inputs/AF071878.1.gb", "gx/corpus/inputs/AF071878.1.embl"],
+      "record_length": 1993,
+      "is_circular": true,
+      "shared_features": [
+        {"type": "source", "file_location": "1..1993", "parts": [[0, 1993]], "strand": "+"},
+        {"type": "stem_loop", "file_location": "join(1975..1993,1..19)", "parts": [[1974, 1993], [0, 19]], "strand": "+"},
+        {"type": "CDS", "file_location": "<108..1007", "parts": [[107, 1007]], "strand": "+"},
+        {"type": "CDS", "file_location": "550..1026", "parts": [[549, 1026]], "strand": "+"},
+        {"type": "CDS", "file_location": "complement(1240..>1974)", "parts": [[1239, 1974]], "strand": "-"}
+      ],
+      "archive_difference": "NCBI's copy additionally carries three `gene` features (indices 2, 4, 6) that ENA's copy does not; that is a real difference between the two archives, not a subject defect, so agreement is asserted over the five feature keys both files contain.",
+      "genbank_feature_count": 8,
+      "embl_feature_count": 5
+    },
+    "sources": [
+      {
+        "anchor": "inputs/AF071878.1.embl#FT   stem_loop       join(1975..1993,1..19)",
+        "digest": "f5ac73da443961c295cccb3a4575b60dfb1188679e6598ad5ab44538f30a8c2c"
+      },
+      {
+        "anchor": "inputs/AF071878.1.gb#     stem_loop       join(1975..1993,1..19)",
+        "digest": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/SeqIO/InsdcIO.py#def _insdc_location_string(location, rec_length):",
+        "digest": "2c12bd14c507928e931b17bcd5ece6a44175479aa17e9efd7b1fec40d8b770a9"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO-14",
+    "statement": "The sequence-edit endpoint must not silently discard the record's annotations and topology. POST /sequences/{id}/edit stores the edited molecule under a new id; that stored record must carry the record's features — shifted for the edit, the way the GUI's own edit path does via shift_annotations — and must keep `is_circular`, because the stored record is what the file endpoints then export.",
+    "numeric": true,
+    "parameters": {
+      "input": "gx/corpus/inputs/NC_001699.1.gb",
+      "stored_id": "NC_001699.1",
+      "edits": [
+        {"operation": "insert", "position": 3000, "insert_seq": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "new_id": "NC_001699.1_insert", "expected_length": 5160},
+        {"operation": "delete", "position": 2100, "end_position": 2200, "new_id": "NC_001699.1_delete", "expected_length": 5030},
+        {"operation": "replace", "position": 1600, "end_position": 1650, "replacement": "AAAAAAAAAA", "new_id": "NC_001699.1_replace", "expected_length": 5090},
+        {"operation": "reverse_complement", "new_id": "NC_001699.1_reverse_complement", "expected_length": 5130}
+      ],
+      "expected_stored_annotation_count_at_least": 1,
+      "expected_is_circular": true,
+      "source_annotation_count": 28
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/SeqFeature.py#    def extract(self, parent_sequence, references=None):",
+        "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#     CDS             complement(join(2603..4426,4771..5013))",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      }
+    ],
+    "outcome": "unverified"
+  }
+]

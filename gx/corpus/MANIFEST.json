@@ -34,6 +34,55 @@
       "source": "Pinned TEST INPUT, not an oracle: the 2686-base pUC19 sequence already committed in this repo at backend/tests/_puc19.py (its docstring cites GenBank L09137.2), written out as one line plus a trailing newline. Pinned so the byte-for-byte input to every expected value in gx/register.json is fixed even if the fixture module moves.",
       "license": "GenBank L09137.2 sequence data — public domain (NCBI places GenBank records in the public domain); the surrounding fixture file is part of this repository (MIT, see /LICENSE).",
       "retrieved": "2026-09-18"
+    },
+    {
+      "path": "biopython-1.85/Bio/SeqFeature.py",
+      "sha256": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56",
+      "source": "Biopython 1.85, installed at /usr/local/lib/python3.11/dist-packages/Bio/SeqFeature.py. Authority for in-memory location semantics: SimpleLocation's 0-based half-open coordinates ('a GenBank entry of 123..150 (one based counting) becomes a location of [122:150]'), strand, CompoundLocation and its `parts`/`operator`, BeforePosition/AfterPosition for `<`/`>`, and `extract()` — the oracle the coords tests call.",
+      "license": "Biopython License Agreement / BSD 3-Clause (see biopython-1.85/LICENSE.rst)",
+      "retrieved": "2026-09-19"
+    },
+    {
+      "path": "biopython-1.85/Bio/SeqIO/InsdcIO.py",
+      "sha256": "2c12bd14c507928e931b17bcd5ece6a44175479aa17e9efd7b1fec40d8b770a9",
+      "source": "Biopython 1.85, installed at /usr/local/lib/python3.11/dist-packages/Bio/SeqIO/InsdcIO.py. Authority for writing a location back out: `_insdc_location_string` turns 0-based half-open intervals into 1-based inclusive GenBank/EMBL strings, emits `complement(join(...))` for an all-minus CompoundLocation by reversing the part list, and renders BeforePosition/AfterPosition as `<`/`>`.",
+      "license": "Biopython License Agreement / BSD 3-Clause (see biopython-1.85/LICENSE.rst)",
+      "retrieved": "2026-09-19"
+    },
+    {
+      "path": "biopython-1.85/Bio/GenBank/__init__.py",
+      "sha256": "789ff8cd3c44d9332c691c9a52dc7d211287ab323f9e94a6a01b181e66aa1417",
+      "source": "Biopython 1.85, installed at /usr/local/lib/python3.11/dist-packages/Bio/GenBank/__init__.py. Authority for reading a location string: the `_FeatureConsumer.location` consumer that turns `join(...)`, `order(...)`, `complement(...)`, `<`/`>` and `accession:start..end` into SimpleLocation/CompoundLocation objects. This is the code the subject's `read_genbank`/`read_embl` delegate to before flattening the result into its own `Annotation` model.",
+      "license": "Biopython License Agreement / BSD 3-Clause (see biopython-1.85/LICENSE.rst)",
+      "retrieved": "2026-09-19"
+    },
+    {
+      "path": "insdc/FT_current.txt",
+      "sha256": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444",
+      "source": "The INSDC Feature Table Definition (DDBJ/ENA/GenBank Feature Table Definition), version current at retrieval, fetched once from https://ftp.EBI.ac.uk/pub/databases/embl/doc/FT_current.txt and saved byte-for-byte. Section 3.4.2/3.4.3 is the authority for location syntax and meaning: `join` vs `order`, `complement`, `<`/`>` partial boundaries, `123^124` between-positions, remote references `J00194.1:100..202`, and the origin-spanning `join(2004..2195,3..20)` on a circular entry.",
+      "license": "The Feature Table Definition is published jointly by DDBJ, ENA/EMBL-EBI and NCBI/GenBank as an open community standard and is freely redistributable; EMBL-EBI data is made available under CC BY 4.0 (https://www.ebi.ac.uk/about/terms-of-use/).",
+      "retrieved": "2026-09-19"
+    },
+    {
+      "path": "inputs/NC_001699.1.gb",
+      "sha256": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0",
+      "source": "Pinned TEST INPUT, not an oracle: RefSeq NC_001699.1 (JC polyomavirus, complete genome, 5130 bp, circular), fetched once from NCBI E-utilities efetch (db=nuccore, rettype=gbwithparts, retmode=text) and saved byte-for-byte. Chosen because one real record carries every hard location form at once: an origin-spanning `join(5118..5130,1..12)` on a circular molecule, a spliced reverse-strand `complement(join(2603..4426,4771..5013))`, a partial boundary on the reverse strand `complement(<2603..4426)`, and 24 plain features to hold the arithmetic honest.",
+      "license": "GenBank/RefSeq record — public domain (NCBI places GenBank records in the public domain; RefSeq records carry no copyright restrictions, https://www.ncbi.nlm.nih.gov/home/about/policies/).",
+      "retrieved": "2026-09-19"
+    },
+    {
+      "path": "inputs/AF071878.1.gb",
+      "sha256": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f",
+      "source": "Pinned TEST INPUT, not an oracle: GenBank AF071878.1 (Beak and feather disease virus, complete genome, 1993 bp, circular), fetched once from NCBI E-utilities efetch (db=nuccore, rettype=gbwithparts, retmode=text) and saved byte-for-byte. The GenBank half of a real GenBank/EMBL pair for one INSDC record; carries `join(1975..1993,1..19)` across the origin, `<108..1007`, and `complement(1240..>1974)`.",
+      "license": "GenBank record — public domain (NCBI places GenBank records in the public domain).",
+      "retrieved": "2026-09-19"
+    },
+    {
+      "path": "inputs/AF071878.1.embl",
+      "sha256": "f5ac73da443961c295cccb3a4575b60dfb1188679e6598ad5ab44538f30a8c2c",
+      "source": "Pinned TEST INPUT, not an oracle: the SAME INSDC record AF071878.1 as served by ENA in EMBL flat-file format, fetched once from https://www.ebi.ac.uk/ena/browser/api/embl/AF071878?lineLimit=0 and saved byte-for-byte. Independent of the GenBank copy — it is EBI's own serialisation, not something this repo generated — so the two files together test that the subject's EMBL and GenBank readers describe one molecule identically. Note the two archives differ in content by design: ENA does not carry the `gene` features NCBI adds, so agreement is asserted over the feature keys both files contain.",
+      "license": "ENA data is distributed under the EMBL-EBI terms of use (CC BY 4.0, https://www.ebi.ac.uk/about/terms-of-use/); the underlying INSDC record is public domain.",
+      "retrieved": "2026-09-19"
     }
   ]
 }

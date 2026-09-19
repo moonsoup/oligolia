@@ -1,0 +1,128 @@
+ID   AF071878; SV 1; circular; genomic DNA; STD; VRL; 1993 BP.
+XX
+AC   AF071878;
+XX
+DT   09-SEP-1998 (Rel. 56, Created)
+DT   03-MAR-2000 (Rel. 62, Last updated, Version 2)
+XX
+DE   Beak and feather disease virus, complete genome.
+XX
+KW   .
+XX
+OS   Beak and feather disease virus
+OC   Viruses; Circoviridae; Circovirus.
+XX
+RN   [1]
+RP   1-1993
+RX   DOI; 10.1007/s007050050412.
+RX   PUBMED; 9787657.
+RA   Niagro F.D., Forsthoefel A.N., Lawther R.P., Kamalanathan L., Ritchie B.W.,
+RA   Latimer K.S., Lukert P.D.;
+RT   "Beak and feather disease virus and porcine circovirus genomes:
+RT   intermediates between the geminiviruses and plant circoviruses";
+RL   Arch. Virol. 143(9):1723-1744(1998).
+XX
+RN   [2]
+RP   1-1993
+RA   Niagro F.D., Forsthoefel A.N., Lawther R.P., Kamalanathan L., Ritchie B.W.,
+RA   Latimer K.S., Lukert P.D.;
+RT   ;
+RL   Submitted (12-JUN-1998) to the INSDC.
+RL   Clinical Investigation, Dwight D. Eisenhower Army Medical Center, Bldg.
+RL   332, Fort Gordon, GA 30905-5650, USA
+XX
+DR   MD5; 6c170a8c500f2a10bf205c1bc5ece847.
+DR   EuropePMC; PMC2812408; 20007276.
+DR   EuropePMC; PMC3133700; 21177928.
+DR   EuropePMC; PMC3647419; 23628223.
+DR   EuropePMC; PMC506959; 15308722.
+XX
+FH   Key             Location/Qualifiers
+FH
+FT   source          1..1993
+FT                   /organism="Beak and feather disease virus"
+FT                   /mol_type="genomic DNA"
+FT                   /db_xref="taxon:77856"
+FT   stem_loop       join(1975..1993,1..19)
+FT   CDS             <108..1007
+FT                   /codon_start=1
+FT                   /gene="V1"
+FT                   /product="replication-associated protein"
+FT                   /note="rolling-circle replication protein homolog; Rep
+FT                   protein; TCT (serine) codon appears to be the translation
+FT                   initiation codon"
+FT                   /db_xref="GOA:O90235"
+FT                   /db_xref="InterPro:IPR000605"
+FT                   /db_xref="InterPro:IPR003365"
+FT                   /db_xref="InterPro:IPR027417"
+FT                   /db_xref="UniProtKB/TrEMBL:O90235"
+FT                   /protein_id="AAC34816.1"
+FT                   /translation="SPEDHTRPGTIPSKEGSGCRRWCFTLNNPTDGEIEFVRSLGPDEF
+FT                   YYAIVGREKGEQGTPHLQGYFHFKNKKRLSALKKMLPRGHFERAKGSDADNEKYCSKEG
+FT                   DVILTLGIVARDGHRAFDGAVAAVMSGPKMKEVAREFPDIYVRHGRGLHSLSLLVGSRP
+FT                   RDFKTEVDVIYGPPGCGKSRWANEQPGTKYYKMRGEWWDGYDGEDVVILDDFYGWLPYC
+FT                   EMLRLCDRYPHKVPVKGAFVEFTSKRIIITSNKAPETWYKEDCDPKPLFRRFTRVWWYN
+FT                   IDKLEQVRPDFLAHPINF"
+FT   CDS             550..1026
+FT                   /codon_start=1
+FT                   /gene="V2"
+FT                   /product="unknown"
+FT                   /db_xref="InterPro:IPR007772"
+FT                   /db_xref="UniProtKB/TrEMBL:O90236"
+FT                   /protein_id="AAC34817.1"
+FT                   /translation="MGGACIASRYWLVPARVILRLRLTSFTGHRGVARVDGPMSSLGPN
+FT                   IIKCAVNGGMDMMGKMSSSWTTFMGGYLIARCSASATVTHIKCQLRALLWSLRARGSLS
+FT                   RAIRPRRPGTRRTVTRSHCSGDSLVFGGTTLTSWNKSGLISSPTPSIFDSLGDV"
+FT   CDS             complement(1240..>1974)
+FT                   /codon_start=1
+FT                   /gene="C1"
+FT                   /product="capsid protein"
+FT                   /note="TCT (serine) codon appears to be the translation
+FT                   initiation codon"
+FT                   /db_xref="GOA:O90237"
+FT                   /db_xref="InterPro:IPR003383"
+FT                   /db_xref="InterPro:IPR038652"
+FT                   /db_xref="UniProtKB/TrEMBL:O90237"
+FT                   /protein_id="AAC34818.1"
+FT                   /translation="SNYACAIFQVRRRYARPYYRRRHIRRYRRRRRHFRRRRFSTNRVY
+FT                   TLRLTRQFKFQIQKQTTSTGNLIFSSDFVTFALSDFITNTPNPQTLNFENYRIKLAKME
+FT                   MRPTWGHYTIQGDGFGHTAVIQDSRISKFKTVADQTQDPLAPFDGARKWYVSRGFKRLL
+FT                   RPKPQITINDLTTANQSAALWLNSARTGWIPLQGGPNAAGAKVRHYGIGFSFPQPEQTI
+FT                   TYVTKLTIYVQFRQFAPNNPST"
+XX
+SQ   Sequence 1993 BP; 426 A; 455 C; 603 G; 509 T; 0 other;
+     ttagtattac ccgccgcctg gggcaccggg gcaccgcagc tattggctgc cttgcggagg        60
+     tgcccgcccc tagggaggag taaatggcgc cgttaggcgc ccgttaatct ccggaggatc       120
+     acactcgtcc gggaaccatc ccgtccaagg agggctctgg ctgtcgccgt tggtgtttca       180
+     ctcttaacaa ccctacagac ggcgaaatcg aattcgtccg ttctctcggg cctgacgaat       240
+     tctactatgc catcgttgga cgggaaaagg gtgagcaagg cactccccat ttgcaaggct       300
+     actttcattt taaaaataag aagcgactga gcgcgcttaa gaaaatgctg ccgcgaggtc       360
+     attttgagcg cgctaaaggg agcgacgcgg ataacgagaa gtattgcagt aaagaggggg       420
+     acgtcatact taccctgggc attgtggcga gagacggtca ccgcgctttc gatggagctg       480
+     ttgctgccgt gatgtccgga cccaaaatga aggaagtcgc gcgagagttc ccagatatct       540
+     acgtcaggca tgggcggggc ttgcatagcc tctcgctatt ggttggttcc cgcccgcgtg       600
+     attttaagac tgaggttgac gtcatttacg ggccaccggg gtgtggcaag agtcgatggg       660
+     ccaatgagca gcctgggacc aaatattata aaatgcgcgg tgaatggtgg gatggatatg       720
+     atggggaaga tgtcgtcatc ttggacgact tttatgggtg gctaccttat tgcgagatgc       780
+     tccgcctctg cgaccgttac ccacataaag tgccagttaa gggcgctttt gtggagttta       840
+     cgagcaagag gatcattatc acgagcaata aggccccgga gacctggtac aaggaggact       900
+     gtgacccgaa gccactgttc cggagattca ctcgtgtttg gtggtacaac attgacaagt       960
+     tggaacaagt ccggcctgat ttcctcgccc accccatcaa tttttgatag tctcggtgat      1020
+     gtttaataaa gttaggcgtc gggccgaagg cccgatgccg caggggggga ccccctgccg      1080
+     gagggttcgc agggccgtca ggcccgagaa cccgaccagc ccggagggcc tagtctgtat      1140
+     cggggggggg gccccggggg gtccccccga cacgacgaac acggtagcga cgaaggcgcc      1200
+     aataaacact caaaaaggta tttgctgctt gagtctttat taagtactgg gattgttagg      1260
+     ggcaaactga cggaattgaa catatatagt gagcttggtt acataagtga tcgtttgttc      1320
+     tggctgaggg aagctgaagc caatgccgta gtgcctgact ttcgctcctg ctgcgttggg      1380
+     tcctccttgt agtgggatcc agccggttct ggcgctgttt agccacaatg ctgcagactg      1440
+     gttcgctgtg gtgaggtcgt ttatcgttat ttgtggtttt ggtctgagga gacgtttgaa      1500
+     tcccctgcta acataccatt ttctggcacc gtcgaaaggt gccagtgggt cttgtgtttg      1560
+     gtctgcaaca gttttaaatt tacttatcct ggagtcttgg attacggccg tgtggccgaa      1620
+     tccgtctcct tgtatggtgt agtgtcccca tgtgggcctc atttccattt tagctaactt      1680
+     aatccggtag ttttcgaaat tcagtgtttg tgggtttggt gtgtttgtta tgaagtctga      1740
+     caatgcaaag gttacaaagt cggagctaaa aattaggttg ccagtactgg tggtttgttt      1800
+     ttgaatttgg aatttgaatt ggcgtgtgag tctgagagtg taaaccctat tggttgagaa      1860
+     acggcgtctg cggaagtgtc tacgtcgccg gcggtatcgc ctgatgtgac gtctgcggta      1920
+     gtatgggcgg gcataccgtc gtctaacctg aaatatagcg catgcgtagt tagaggtgcc      1980
+     ccataggcgg cgg                                                         1993
+//
