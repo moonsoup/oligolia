@@ -38,6 +38,11 @@ IN_PLACE_OPS = {"insert", "delete", "replace", "reverse_complement", "complement
 NUCLEOTIDE_ONLY_OPS = {"reverse_complement", "complement", "transcribe", "back_transcribe"}
 
 
+def _ann_label(ann: Annotation) -> str:
+    """What to call a feature when telling the user what an edit did to it."""
+    return str(ann.qualifiers.get("gene") or ann.qualifiers.get("label") or ann.feature_type)
+
+
 class DNAHighlighter(QSyntaxHighlighter):
     """
     Color-codes ALL IUPAC nucleotide symbols (NCBI/IUPAC 1985 standard).
@@ -952,6 +957,12 @@ class SequencePanel(QWidget):
         feature pointed at the wrong bases after any edit, and export wrote them
         that way (#59). A feature whose own bases were edited is dropped and the
         user is told which.
+
+        The edited bases go in as `new_sequence` so that a feature whose own
+        bases changed can have its `/translation` restated instead of being
+        dropped (#95) — a point mutation inside a CDS is the ordinary edit this
+        app exists for, and the user is told when the protein it declares moved
+        with it.
         """
         self._history_for(self._active.id).push(self._active.seq)
 
@@ -961,15 +972,26 @@ class SequencePanel(QWidget):
             )
         elif splice is not None:
             start, end, inserted = splice
+            before = self._active.annotations
             kept, lost = shift_annotations(
-                self._active.annotations, start=start, end=end, inserted=inserted
+                before, start=start, end=end, inserted=inserted, new_sequence=new_seq,
             )
             self._active.annotations = kept
-            if lost:
-                names = ", ".join(
-                    str(a.qualifiers.get("gene") or a.qualifiers.get("label") or a.feature_type)
-                    for a in lost[:5]
+            # `lost` holds the original objects and both lists keep their input
+            # order, so the survivors line up one-for-one with `kept`.
+            lost_ids = {id(a) for a in lost}
+            survivors = [a for a in before if id(a) not in lost_ids]
+            restated = [
+                a for a, k in zip(survivors, kept)
+                if a.qualifiers.get("translation") != k.qualifiers.get("translation")
+            ]
+            if restated:
+                msg += (
+                    f"  ·  {len(restated)} /translation(s) restated from the edited "
+                    "bases: " + ", ".join(_ann_label(a) for a in restated[:5])
                 )
+            if lost:
+                names = ", ".join(_ann_label(a) for a in lost[:5])
                 msg += (
                     f"  ·  {len(lost)} annotation(s) removed because the edit changed "
                     f"their bases: {names}"
