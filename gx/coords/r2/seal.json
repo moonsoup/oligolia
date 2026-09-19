@@ -1,0 +1,108 @@
+{
+  "algo": "sha256",
+  "entries": [
+    {
+      "file": "gx/coords/r2/test_coords_r2_edit_endpoint.py",
+      "digest": "587a897c4121f8be840691559e888ad1f4590b1b1a95de4fefb5707b6041bfed"
+    }
+  ],
+  "digest": "87d126112a2f02cb49860ddf7b2b93365a69e8251c4aae0cd7cc77b5644d460e",
+  "support": [
+    {
+      "file": "gx/conftest.py",
+      "digest": "a097f944f61364bade5e7a11425e697b6959c8d50d05c8b50456b7bce59c0568"
+    },
+    {
+      "file": "gx/coords/conftest.py",
+      "digest": "bcc5b29c27648cd738110c8ec2f51c110a1aed156ac925b2d144aca9172ff0c5"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/Data/CodonTable.py",
+      "digest": "e250e0c40eeb9da4d75438310c8f2317b4e9d88b5eb2ec101e76a1d27f1a5a22"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/Data/IUPACData.py",
+      "digest": "897fb42f1bd6e3f837be6918ae6c54e77e61013b284cbabd4e7dfc01723e1a91"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/GenBank/__init__.py",
+      "digest": "789ff8cd3c44d9332c691c9a52dc7d211287ab323f9e94a6a01b181e66aa1417"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/Restriction/Restriction.py",
+      "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/Restriction/Restriction_Dictionary.py",
+      "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/Seq.py",
+      "digest": "e96225e95b41df786a60501814ecafab89b74a07ec8eedc388001bdf45e80e3f"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/SeqFeature.py",
+      "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/SeqIO/InsdcIO.py",
+      "digest": "2c12bd14c507928e931b17bcd5ece6a44175479aa17e9efd7b1fec40d8b770a9"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/SeqUtils/__init__.py",
+      "digest": "bd6e3676fdbc01c88e19313f1babf65c96697019460f1e73e1d136392dcf7d6a"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/LICENSE.rst",
+      "digest": "d4bbb0c4e5345e6f2508c3b93fb247fcb2db95783fb8a584c23cd88e3c03df6c"
+    },
+    {
+      "file": "gx/corpus/crispr/CRISPOR-master-LICENSE.txt",
+      "digest": "7fa8299b7e0c9fef4c47985494b73596250ce5b8c949ced7d845f997f1243629"
+    },
+    {
+      "file": "gx/corpus/crispr/CRISPOR-v3.1-LICENSE.txt",
+      "digest": "dfb1615c12f9dbca598734ffacaab4d4968d0c1b7fa64ae9cb7f72a0f8786d24"
+    },
+    {
+      "file": "gx/corpus/crispr/crispor-v3.1.py",
+      "digest": "aaa4d8f362af255f76127e58b5838e8ee199db533b4a228448811cc45b5efa37"
+    },
+    {
+      "file": "gx/corpus/crispr/crisporEffScores-v3.1.py",
+      "digest": "2b6b589db6e3ef4a2433b3a93e657f2e61235f0ad593aa3007a3cb14e46c12e0"
+    },
+    {
+      "file": "gx/corpus/inputs/AF071878.1.embl",
+      "digest": "f5ac73da443961c295cccb3a4575b60dfb1188679e6598ad5ab44538f30a8c2c"
+    },
+    {
+      "file": "gx/corpus/inputs/AF071878.1.gb",
+      "digest": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f"
+    },
+    {
+      "file": "gx/corpus/inputs/NC_001699.1.gb",
+      "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+    },
+    {
+      "file": "gx/corpus/inputs/NC_012920.1.gb",
+      "digest": "7530d659e7174272372814edfecb2ece1f87a444395a861fcdf1b977c4aa5c1f"
+    },
+    {
+      "file": "gx/corpus/inputs/NG_007400.1.gb",
+      "digest": "4f39bbd3b9ff111dbd7d56aa4b0e077307203b4a962dc8c30e3304beb4ffb71c"
+    },
+    {
+      "file": "gx/corpus/inputs/puc19_L09137.2.txt",
+      "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+    },
+    {
+      "file": "gx/corpus/insdc/FT_current.txt",
+      "digest": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444"
+    },
+    {
+      "file": "gx/corpus/ncbi/gc.prt",
+      "digest": "2aecbdd09ecc5e0d233c105090a593737298ef93d88f6bc0c1bef26df6051a04"
+    }
+  ]
+}
