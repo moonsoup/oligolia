@@ -1,0 +1,39 @@
+{
+  "files": [
+    {
+      "path": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py",
+      "sha256": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b",
+      "source": "Biopython 1.85, installed at /usr/local/lib/python3.11/dist-packages/Bio/Restriction/Restriction_Dictionary.py (the interpreter backend/.venv exposes via --system-site-packages; `import Bio; Bio.__version__ == '1.85'`). REBASE-derived enzyme table: recognition site, size, fst5/fst3 cut offsets, ovhg, ovhgseq, compsite regex, suppliers.",
+      "license": "Biopython License Agreement / BSD 3-Clause (see biopython-1.85/LICENSE.rst); the enzyme data is derived from REBASE (Roberts et al.), which is free for academic use and asks that it be cited.",
+      "retrieved": "2026-09-18"
+    },
+    {
+      "path": "biopython-1.85/Bio/Restriction/Restriction.py",
+      "sha256": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0",
+      "source": "Biopython 1.85, installed at /usr/local/lib/python3.11/dist-packages/Bio/Restriction/Restriction.py. Defines the search semantics the subject delegates to: FormattedSeq normalisation, 1-based positions, the `location + fst5` cut rule, linear vs circular search, and catalyse() fragmenting.",
+      "license": "Biopython License Agreement / BSD 3-Clause (see biopython-1.85/LICENSE.rst)",
+      "retrieved": "2026-09-18"
+    },
+    {
+      "path": "biopython-1.85/Bio/Data/IUPACData.py",
+      "sha256": "897fb42f1bd6e3f837be6918ae6c54e77e61013b284cbabd4e7dfc01723e1a91",
+      "source": "Biopython 1.85, installed at /usr/local/lib/python3.11/dist-packages/Bio/Data/IUPACData.py. Authority for the IUPAC ambiguity codes used to expand degenerate recognition sequences and for what counts as a nucleotide letter.",
+      "license": "Biopython License Agreement / BSD 3-Clause (see biopython-1.85/LICENSE.rst)",
+      "retrieved": "2026-09-18"
+    },
+    {
+      "path": "biopython-1.85/LICENSE.rst",
+      "sha256": "d4bbb0c4e5345e6f2508c3b93fb247fcb2db95783fb8a584c23cd88e3c03df6c",
+      "source": "Biopython 1.85 wheel metadata, /usr/local/lib/python3.11/dist-packages/biopython-1.85.dist-info/LICENSE.rst. Included so the licence of the three pinned Bio/ files travels with them.",
+      "license": "Biopython License Agreement / BSD 3-Clause (this file is the licence text itself)",
+      "retrieved": "2026-09-18"
+    },
+    {
+      "path": "inputs/puc19_L09137.2.txt",
+      "sha256": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b",
+      "source": "Pinned TEST INPUT, not an oracle: the 2686-base pUC19 sequence already committed in this repo at backend/tests/_puc19.py (its docstring cites GenBank L09137.2), written out as one line plus a trailing newline. Pinned so the byte-for-byte input to every expected value in gx/register.json is fixed even if the fixture module moves.",
+      "license": "GenBank L09137.2 sequence data — public domain (NCBI places GenBank records in the public domain); the surrounding fixture file is part of this repository (MIT, see /LICENSE).",
+      "retrieved": "2026-09-18"
+    }
+  ]
+}

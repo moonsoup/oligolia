@@ -1,0 +1,433 @@
+[
+  {
+    "id": "RE-1",
+    "statement": "For linear pUC19 (2686 bp), POST /primers/restriction_sites reports, for every curated panel enzyme that cuts, exactly the 0-based start indices at which that enzyme's REBASE recognition sequence occurs in the template, and reports no entry for an enzyme with no occurrence.",
+    "numeric": true,
+    "parameters": {
+      "template": "gx/corpus/inputs/puc19_L09137.2.txt",
+      "template_length": 2686,
+      "is_circular": false,
+      "coordinates": "0-based index of the first base of the recognition sequence",
+      "expected_site_starts": {
+        "NdeI": [182],
+        "PvuII": [305, 627],
+        "EcoRI": [395],
+        "SacI": [401],
+        "KpnI": [407],
+        "SmaI": [411],
+        "AvaI": [411],
+        "BamHI": [416],
+        "XbaI": [422],
+        "SalI": [428],
+        "PstI": [434],
+        "SphI": [440],
+        "HindIII": [446],
+        "AvaII": [1836, 2058]
+      }
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py#(?=(?P<EcoRI>GAATTC))",
+        "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py#(?=(?P<PvuII>CAGCTG))",
+        "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py#(?=(?P<NdeI>CATATG))",
+        "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#GCCAGTGAATTCGAGCTCGGTACCCGGGGATCCTCT",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#GTGCACCATATGCGGTGT",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "RE-2",
+    "statement": "Every recognition sequence in the app's curated enzyme panel is its own IUPAC reverse complement, so a top-strand-only scan is complete for the panel; correspondingly, running the app's site finder on the reverse complement of pUC19 must return the mirror-image start indices 2686 - (start + size) of the forward-strand result.",
+    "numeric": false,
+    "parameters": {},
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py#(?=(?P<AvaII>GG[AT]CC))",
+        "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Data/IUPACData.py#ambiguous_dna_values = {",
+        "digest": "897fb42f1bd6e3f837be6918ae6c54e77e61013b284cbabd4e7dfc01723e1a91"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "RE-3",
+    "statement": "The site finder must locate recognition sites that occur on the bottom strand: for the non-palindromic enzyme BsaI (site GGTCTC), whose recognition sequence occurs in pUC19 only on the bottom strand (its reverse complement GAGACC occurs on the top strand at 0-based 1765), /primers/restriction_sites must report exactly one site and /primers/digest must report exactly one cut, at 0-based 1760, so that the two endpoints agree on the number of sites.",
+    "numeric": true,
+    "parameters": {
+      "enzyme": "BsaI",
+      "site": "GGTCTC",
+      "reverse_complement_on_top_strand": "GAGACC",
+      "revcomp_start_0based": 1765,
+      "expected_site_count": 1,
+      "expected_cut_positions_0based": [1760],
+      "biopython_search_1based": [1761],
+      "note": "BsaI is not in the shipped panel; the test adds it to the panel dicts the endpoints read, exercising the app's own search code with a non-palindromic recognition sequence. The defect it probes is latent for today's all-palindromic panel (see RE-2)."
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py#(?=(?P<BsaI>GGTCTC))",
+        "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#TACCGCGAGACCCACGCT",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#The positions are the first base of the 3' fragment,",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "RE-4",
+    "statement": "The cut positions reported by /primers/digest are 0-based top-strand indices of the first base of the downstream fragment, equal to Biopython's 1-based search() position minus one, and equal to the recognition-site start plus the enzyme's fst5 offset from Restriction_Dictionary.",
+    "numeric": true,
+    "parameters": {
+      "template": "gx/corpus/inputs/puc19_L09137.2.txt",
+      "is_circular": false,
+      "cases": {
+        "EcoRI": {"site_start_0based": 395, "fst5": 1, "expected_cut_0based": 396, "biopython_1based": 397},
+        "NdeI": {"site_start_0based": 182, "fst5": 2, "expected_cut_0based": 184, "biopython_1based": 185},
+        "SmaI": {"site_start_0based": 411, "fst5": 3, "expected_cut_0based": 414, "biopython_1based": 415},
+        "KpnI": {"site_start_0based": 407, "fst5": 5, "expected_cut_0based": 412, "biopython_1based": 413},
+        "PvuII": {"site_start_0based": 305, "fst5": 3, "expected_cut_0based": 308, "biopython_1based": 309}
+      }
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#The positions are the first base of the 3' fragment,",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#yield location + cls.fst5",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#Note this adds a leading space to the sequence (!)",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py#rest_dict[\"KpnI\"] = {",
+        "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "RE-5",
+    "statement": "A recognition site that spans the origin of a circular template is found exactly once, at its true start index near the end of the template, and produces exactly one cut; the same template analysed as linear finds no site at all.",
+    "numeric": true,
+    "parameters": {
+      "template": "pUC19 rotated left by 398 bases: puc19[398:] + puc19[:398]",
+      "template_length": 2686,
+      "enzyme": "EcoRI",
+      "site_spans": "the last 3 bases (GAA) plus the first 3 bases (TTC) of the rotated template",
+      "expected_circular_site_starts_0based": [2683],
+      "expected_circular_site_count": 1,
+      "expected_circular_cut_positions_0based": [2684],
+      "expected_circular_fragment_lengths": [2686],
+      "biopython_circular_search_1based": [2685],
+      "expected_linear_site_starts": [],
+      "expected_linear_fragment_lengths": [2686]
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#If linear is False, the restriction sites that span over the boundaries",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#Restriction sites are search over the edges of circular sequence.",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#GCCAGTGAATTCGAGCTCGGTACCCGGGGATCCTCT",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "RE-6",
+    "statement": "For a LINEAR template, n distinct cut positions yield n+1 fragments (excluding a zero-length end piece when a cut falls on a terminus), the fragment lengths sum to the template length, each fragment sequence equals the template slice between its boundaries, and the multiset of fragment lengths equals Biopython's catalyse(linear=True).",
+    "numeric": true,
+    "parameters": {
+      "template": "gx/corpus/inputs/puc19_L09137.2.txt",
+      "template_length": 2686,
+      "cases": {
+        "PvuII": {"cuts": 2, "fragments": 3, "expected_lengths_sorted": [308, 322, 2056]},
+        "AvaII": {"cuts": 2, "fragments": 3, "expected_lengths_sorted": [222, 627, 1837]},
+        "EcoRI": {"cuts": 1, "fragments": 2, "expected_lengths_sorted": [396, 2290]},
+        "full_panel": {"cuts": 15, "fragments": 16, "expected_lengths_sorted": [2, 2, 3, 6, 6, 6, 6, 10, 10, 88, 124, 183, 184, 222, 627, 1207]}
+      },
+      "expected_length_sum": 2686
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#   START of the sequence to FIRST site.",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#fragments.append(d[r[-1] :])",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#TTACGCCAGCTGGCGAAA",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "RE-7",
+    "statement": "For a CIRCULAR template, n distinct cut positions yield exactly n fragments (not n+1) — the last cut bridges the origin back to the first — the fragment lengths sum to the circle length, the origin-spanning fragment's sequence equals template[start:] + template[:end], and the multiset of fragment lengths equals Biopython's catalyse(linear=False).",
+    "numeric": true,
+    "parameters": {
+      "template": "gx/corpus/inputs/puc19_L09137.2.txt",
+      "template_length": 2686,
+      "cases": {
+        "PvuII": {"cuts": 2, "fragments": 2, "expected_lengths_sorted": [322, 2364]},
+        "AvaII": {"cuts": 2, "fragments": 2, "expected_lengths_sorted": [222, 2464]},
+        "EcoRI": {"cuts": 1, "fragments": 1, "expected_lengths_sorted": [2686]},
+        "full_panel": {"cuts": 15, "fragments": 15, "expected_lengths_sorted": [2, 2, 3, 6, 6, 6, 6, 10, 10, 88, 124, 183, 222, 811, 1207]}
+      },
+      "expected_length_sum": 2686
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#   circular : bridge LAST site to FIRST site.",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#fragments.append(d[r[-1] :] + d[1 : r[0]])",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#TCGTGCCAGCTGCATTAA",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "RE-8",
+    "statement": "An enzyme with no recognition site in the template is reported as cutting zero times: it is absent from the /primers/restriction_sites result, and /primers/digest returns zero cut positions and exactly one fragment whose sequence is the whole template, for both linear and circular topology.",
+    "numeric": true,
+    "parameters": {
+      "template": "gx/corpus/inputs/puc19_L09137.2.txt",
+      "template_length": 2686,
+      "enzymes_with_no_site": ["NotI", "XhoI", "NcoI", "ClaI", "EcoRV", "MluI", "NheI", "AgeI", "BglII", "MfeI"],
+      "expected_cut_positions": [],
+      "expected_fragment_count": 1,
+      "expected_fragment_length": 2686
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py#(?=(?P<NotI>GCGGCCGC))",
+        "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#TCGCGCGTTTCGGTGATGACGGTG",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "RE-9",
+    "statement": "Overlapping recognition sites are each reported once: two ClaI sites that share two bases in AAATCGATCGATTTT are both found (starts 2 and 6, cuts 4 and 8, fragment lengths 4/4/7), and in pUC19 the mutually overlapping KpnI (407-412), SmaI (411-416) and AvaI (411-416) sites are all reported with their own cut positions.",
+    "numeric": true,
+    "parameters": {
+      "overlap_template": "AAATCGATCGATTTT",
+      "overlap_enzyme": "ClaI",
+      "expected_site_starts_0based": [2, 6],
+      "expected_cut_positions_0based": [4, 8],
+      "expected_fragment_lengths_sorted": [4, 4, 7],
+      "biopython_search_1based": [5, 9],
+      "puc19_overlapping_sites": {"KpnI": [407], "SmaI": [411], "AvaI": [411]},
+      "puc19_overlapping_cuts": {"KpnI": [412], "SmaI": [414], "AvaI": [412]}
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py#(?=(?P<KpnI>GGTACC))",
+        "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py#(?=(?P<SmaI>CCCGGG))",
+        "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#GCCAGTGAATTCGAGCTCGGTACCCGGGGATCCTCT",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "RE-10",
+    "statement": "IUPAC-ambiguous recognition sequences are expanded per ambiguous_dna_values: AvaI (CYCGRG) matches all four resolutions and AvaII (GGWCC) both, at the positions where they literally occur, and the cut_pattern the app reports for each enzyme is that enzyme's REBASE site string.",
+    "numeric": true,
+    "parameters": {
+      "avaI_pattern": "CYCGRG",
+      "avaI_expansion": {"Y": "CT", "R": "AG"},
+      "avaI_template": "AAACCCGAGTTCTCGAGTTCCCGGGTTCTCGGGAAA",
+      "avaI_expected_site_starts_0based": [3, 11, 19, 27],
+      "avaI_biopython_1based": [5, 13, 21, 29],
+      "avaII_pattern": "GGWCC",
+      "avaII_expansion": {"W": "AT"},
+      "avaII_template": "TTGGACCTTTGGTCCTT",
+      "avaII_expected_site_starts_0based": [2, 10],
+      "avaII_biopython_1based": [4, 12],
+      "puc19_avaI_sites": [411],
+      "puc19_avaII_sites": [1836, 2058]
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py#(?=(?P<AvaI>C[CT]CG[AG]G))",
+        "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py#(?=(?P<AvaII>GG[AT]CC))",
+        "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Data/IUPACData.py#\"W\": \"AT\",",
+        "digest": "897fb42f1bd6e3f837be6918ae6c54e77e61013b284cbabd4e7dfc01723e1a91"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#AGAAGTGGTCCTGCAACT",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "RE-11",
+    "statement": "A template supplied with the layout characters that Biopython's FormattedSeq removes before searching (all whitespace and all digits) must be analysed as the biological sequence those characters interleave: for a GenBank-ORIGIN-style paste of pUC19, template_length is 2686, the EcoRI site is at 395, the cut is at 396, the fragment lengths are 396 and 2290, and every reported fragment sequence contains only nucleotide letters.",
+    "numeric": true,
+    "parameters": {
+      "template": "pUC19 as a GenBank ORIGIN block: 60 bases per line, lowercase, in space-separated blocks of 10, each line prefixed by its right-aligned 1-based start coordinate",
+      "removed_by_biopython": "string.whitespace + string.digits",
+      "expected_template_length": 2686,
+      "expected_site_starts_0based": [395],
+      "expected_cut_positions_0based": [396],
+      "expected_fragment_lengths_sorted": [396, 2290],
+      "expected_fragment_alphabet": "ACGT only",
+      "crlf_variant": "pUC19 wrapped at 60 columns with CRLF line endings; same expected values"
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#_remove_chars = string.whitespace.encode() + string.digits.encode()",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#Roughly: remove anything which is not IUPAC alphabet and then add a space",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#GCCAGTGAATTCGAGCTCGGTACCCGGGGATCCTCT",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "RE-12",
+    "statement": "The two endpoints must describe the same molecule in the same coordinate system for the same request body: for any template and enzyme, the number of sites from /primers/restriction_sites equals the number of cuts from /primers/digest, and every reported cut equals a reported site start plus that enzyme's fst5 offset.",
+    "numeric": true,
+    "parameters": {
+      "coherence_rule": "cut_position == site_start + fst5 (modulo template length when circular), and len(sites) == len(cut_positions)",
+      "holds_for": "the clean 2686-base pUC19, linear and circular, across the whole panel",
+      "probe_templates": {
+        "genbank_origin_paste_of_puc19": {"expected_site_starts": [395], "expected_cut_positions": [396], "fst5": 1},
+        "crlf_wrapped_puc19": {"expected_site_starts": [395], "expected_cut_positions": [396], "fst5": 1}
+      },
+      "enzyme": "EcoRI"
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#yield location + cls.fst5",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#_remove_chars = string.whitespace.encode() + string.digits.encode()",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py#(?=(?P<EcoRI>GAATTC))",
+        "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "RE-13",
+    "statement": "A template containing a character outside the IUPAC nucleotide alphabet is not an analysable sequence — Biopython refuses it with TypeError('Invalid character found in ...') — so both endpoints must reject it the way the app already rejects an unknown enzyme name, with an HTTP 4xx, rather than /primers/digest returning HTTP 500 from an unhandled TypeError while /primers/restriction_sites returns HTTP 200 with positions counted over the raw string.",
+    "numeric": false,
+    "parameters": {},
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#raise TypeError(f\"Invalid character found in {data.decode()}\")",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#if 0 in self.data:  # Check if all letters were IUPAC",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Data/IUPACData.py#ambiguous_dna_values = {",
+        "digest": "897fb42f1bd6e3f837be6918ae6c54e77e61013b284cbabd4e7dfc01723e1a91"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "RE-14",
+    "statement": "The digest report must not depend on the order of the enzymes in the request: AvaI (C^YCGRG, 5' overhang, ovhg -4) and KpnI (G_GTAC^C, 3' overhang, ovhg +4) both cut pUC19 at the same 0-based top-strand position 412, and digest(['AvaI','KpnI']) must return the same fragments — boundaries, lengths and end chemistry — as digest(['KpnI','AvaI']).",
+    "numeric": true,
+    "parameters": {
+      "template": "gx/corpus/inputs/puc19_L09137.2.txt",
+      "enzymes": ["AvaI", "KpnI"],
+      "shared_cut_position_0based": 412,
+      "avaI": {"site": "CYCGRG", "site_start_0based": 411, "fst5": 1, "ovhg": -4, "ovhgseq": "CCGG at 412-415"},
+      "kpnI": {"site": "GGTACC", "site_start_0based": 407, "fst5": 5, "ovhg": 4, "ovhgseq": "GTAC at 408-411"},
+      "requirement": "order-independent result; the two enzyme orders must produce identical DigestResult payloads"
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py#(?=(?P<AvaI>C[CT]CG[AG]G))",
+        "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction_Dictionary.py#rest_dict[\"KpnI\"] = {",
+        "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Restriction/Restriction.py#yield location + cls.fst5",
+        "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#GCCAGTGAATTCGAGCTCGGTACCCGGGGATCCTCT",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      }
+    ],
+    "outcome": "unverified"
+  }
+]
