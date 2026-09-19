@@ -100,6 +100,10 @@ class AlignmentPanel(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._msa_worker: Worker | None = None
+        #: aligner name → its display spelling, as the router reports it. Filled
+        #: by `_populate_aligner_choices`; read off the GUI thread is fine, it is
+        #: only ever written there.
+        self._aligner_labels: dict[str, str] = {}
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -177,6 +181,19 @@ class AlignmentPanel(QWidget):
         self._msa_notice.hide()
         msa_layout.addWidget(self._msa_notice)
 
+        # Which aligner actually runs. The router's MSARequest has always taken an
+        # `algorithm`; the tab used to pin it to the default, so a machine with
+        # only ClustalW installed got enabled controls and then a 503 naming the
+        # aligner it does not have. The selection made here is the one passed to
+        # `multiple_align` (#83).
+        aligner_row = QHBoxLayout()
+        self._msa_algorithm = QComboBox()
+        self._msa_algorithm.currentIndexChanged.connect(self._sync_msa_button)
+        aligner_row.addWidget(QLabel("Aligner:"))
+        aligner_row.addWidget(self._msa_algorithm)
+        aligner_row.addStretch()
+        msa_layout.addLayout(aligner_row)
+
         self._msa_input = QTextEdit()
         self._msa_input.setPlaceholderText(">seq1\nATGGTGCACCTGACT\n>seq2\nATGGTGCATCTGACT\n>seq3\nATGGTGCACCTGGCT")
         self._msa_input.setFont(QFont("JetBrains Mono", 11))
@@ -233,12 +250,21 @@ class AlignmentPanel(QWidget):
         Imported here rather than at module import for the same reason `_do_msa`
         does it: the panel is built at startup and the router pulls in FastAPI.
         """
-        from backend.routers.alignment import DEFAULT_ALGORITHM, aligner_statuses
+        from backend.routers.alignment import (
+            DEFAULT_ALGORITHM, aligner_statuses, preferred_algorithm,
+        )
 
         statuses = aligner_statuses()
         ready = any(a.available for a in statuses)
+        # Keep the user's own pick across a re-check, but only while it is still
+        # runnable — otherwise fall back to the router's preference.
+        keep = self._msa_algorithm.currentData()
+        if keep is not None and not any(a.name == keep and a.available for a in statuses):
+            keep = None
+        self._populate_aligner_choices(statuses, keep or preferred_algorithm(statuses))
 
         self._msa_input.setEnabled(ready)
+        self._msa_algorithm.setEnabled(ready)
         self._btn_msa.setEnabled(ready)
         notice = "" if ready else format_aligner_notice(statuses)
         self._msa_notice.setText(notice)
@@ -247,6 +273,40 @@ class AlignmentPanel(QWidget):
         self._btn_msa.setToolTip("" if ready else next(
             (a.hint for a in statuses if a.name == DEFAULT_ALGORITHM), ""
         ))
+        self._sync_msa_button()
+
+    def _populate_aligner_choices(self, statuses: list, select: str | None) -> None:
+        """Refill the selector: every aligner listed, only installed ones pickable.
+
+        A missing aligner stays visible and greyed rather than disappearing, so
+        the list is also the answer to "what could I install?".
+        """
+        blocked = self._msa_algorithm.blockSignals(True)
+        try:
+            self._msa_algorithm.clear()
+            self._aligner_labels = {a.name: a.label for a in statuses}
+            for row, info in enumerate(statuses):
+                self._msa_algorithm.addItem(
+                    info.label if info.available else f"{info.label} (not installed)",
+                    info.name,
+                )
+                if not info.available:
+                    item = self._msa_algorithm.model().item(row)
+                    if item is not None:
+                        item.setEnabled(False)
+                    self._msa_algorithm.setItemData(row, info.hint, Qt.ItemDataRole.ToolTipRole)
+            index = self._msa_algorithm.findData(select) if select else -1
+            self._msa_algorithm.setCurrentIndex(index)
+        finally:
+            self._msa_algorithm.blockSignals(blocked)
+
+    def _sync_msa_button(self) -> None:
+        """Name the aligner the button will actually run."""
+        selected = self._msa_algorithm.currentData()
+        self._btn_msa.setText(
+            f"Run MSA ({self._aligner_labels.get(selected, selected)})"
+            if selected else "Run MSA (requires MUSCLE)"
+        )
 
     def _run_pairwise(self) -> None:
         s1 = self._seq1.toPlainText().strip().upper().replace(" ", "").replace("\n", "")
@@ -319,15 +379,27 @@ class AlignmentPanel(QWidget):
             QMessageBox.warning(self, "Too few sequences", "Need at least 2 sequences for MSA.")
             return
 
+        # Read on the GUI thread; the worker must not touch widgets.
+        algorithm = self._msa_algorithm.currentData()
+        if algorithm is None:
+            # Only reachable if detection went stale between the last re-check and
+            # the click; re-check rather than shell out to nothing.
+            self._refresh_aligner_availability()
+            self._msa_status.setText("No sequence aligner is installed.")
+            return
+
         self._msa_progress.show()
-        self._msa_status.setText(f"Aligning {len(seqs)} sequences…")
+        self._msa_status.setText(
+            f"Aligning {len(seqs)} sequences with "
+            f"{self._aligner_labels.get(algorithm, algorithm)}…"
+        )
 
         # Refuse rather than rebind a live QThread, which Qt aborts on (#54).
         if worker_busy(self, "_msa_worker"):
             self._msa_progress.hide()
             self._msa_status.setText("Already aligning — wait for that run to finish.")
             return
-        self._msa_worker = Worker(self._do_msa, seqs)
+        self._msa_worker = Worker(self._do_msa, seqs, algorithm)
         self._msa_worker.result.connect(self._on_msa_done)
         self._msa_worker.error.connect(lambda e: (
             self._msa_progress.hide(),
@@ -335,21 +407,32 @@ class AlignmentPanel(QWidget):
         ))
         self._msa_worker.start()
 
-    def _do_msa(self, seqs: list[dict]) -> dict:
-        """Align via the backend router, in-process.
+    def _do_msa(self, seqs: list[dict], algorithm: str | None = None) -> dict:
+        """Align via the backend router, in-process, with the selected aligner.
 
         This used to be a second, independent copy of the MUSCLE call, the
         right-padding fallback, the consensus and the identity matrix — so #58 had
         to be fixed twice and the two could drift apart. It now calls the router,
         which refuses rather than approximating; the Worker's `error` signal puts
         the reason on the status line.
+
+        `algorithm` comes from the selector, which is populated from the same
+        detection the router checks before shelling out — so the tab cannot offer
+        an aligner this call then 503s on (#83). None means "no preference": ask
+        the router which one it would pick, and fall back to its stated default
+        so that with nothing installed the refusal still names something.
         """
         from fastapi import HTTPException
 
-        from backend.routers.alignment import DEFAULT_ALGORITHM, MSARequest, multiple_align
+        from backend.routers import alignment
+
+        if algorithm is None:
+            algorithm = alignment.preferred_algorithm() or alignment.DEFAULT_ALGORITHM
 
         try:
-            res = multiple_align(MSARequest(sequences=seqs, algorithm=DEFAULT_ALGORITHM))
+            res = alignment.multiple_align(
+                alignment.MSARequest(sequences=seqs, algorithm=algorithm)
+            )
         except HTTPException as e:
             # Worker.error stringifies whatever is raised; HTTPException's own repr
             # buries the message, so surface just the detail.

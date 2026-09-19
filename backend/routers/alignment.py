@@ -49,6 +49,7 @@ class AlignerInfo(BaseModel):
     """Whether one external aligner can be run, and what to do if it cannot."""
 
     name: str
+    label: str  # how to spell it in a UI — "ClustalW", not "clustalw"
     available: bool
     path: str | None  # resolved executable, or None when nothing was found
     hint: str  # the same install hint the 503 quotes
@@ -58,6 +59,11 @@ class AlignerInfo(BaseModel):
 class AlignersResult(BaseModel):
     aligners: list[AlignerInfo]
     any_available: bool
+    #: Which aligner a caller should run if it has no preference of its own —
+    #: None when there is nothing to run. The MSA panel defaults its selector to
+    #: this, so "what the tab offers" and "what the run path accepts" are one
+    #: decision rather than two (#83).
+    preferred: str | None
 
 
 @router.post("/pairwise", response_model=PairwiseResult)
@@ -107,6 +113,14 @@ _ALIGNER_URLS = {
     "clustalw": "http://www.clustal.org/clustal2",
 }
 
+#: Display spelling per aligner. Here rather than in the GUI because it belongs to
+#: the same table as the URLs and hints: adding an aligner should mean editing one
+#: dict, not one dict and one panel (#83).
+_ALIGNER_LABELS = {
+    "muscle": "MUSCLE",
+    "clustalw": "ClustalW",
+}
+
 #: Where to get each aligner, so a 503 can tell the user what to do.
 _ALIGNER_HELP = {
     "muscle": f"MUSCLE v5 (`brew install muscle`, or {_ALIGNER_URLS['muscle']})",
@@ -125,6 +139,7 @@ def aligner_status(name: str) -> AlignerInfo:
     path = shutil.which(name)
     return AlignerInfo(
         name=name,
+        label=_ALIGNER_LABELS.get(name, name),
         available=path is not None,
         path=path,
         hint=_ALIGNER_HELP[name],
@@ -135,6 +150,23 @@ def aligner_status(name: str) -> AlignerInfo:
 def aligner_statuses() -> list[AlignerInfo]:
     """`aligner_status` for every aligner `/multiple` knows how to drive."""
     return [aligner_status(name) for name in _ALIGNER_HELP]
+
+
+def preferred_algorithm(statuses: list[AlignerInfo] | None = None) -> str | None:
+    """The aligner to run when the caller has no preference, or None if there is none.
+
+    `DEFAULT_ALGORITHM` when it is installed, otherwise the first aligner that
+    is. Gating a UI on `DEFAULT_ALGORITHM` alone would call a ClustalW-only
+    machine "ready" only to 503 on Run, or call it unusable while ClustalW sits
+    on PATH; both were wrong for the same reason — deciding with a different
+    fact than the run path uses (#83).
+    """
+    if statuses is None:
+        statuses = aligner_statuses()
+    available = [a.name for a in statuses if a.available]
+    if DEFAULT_ALGORITHM in available:
+        return DEFAULT_ALGORITHM
+    return available[0] if available else None
 
 
 def _not_installed(algorithm: str) -> HTTPException:
@@ -161,6 +193,7 @@ def list_aligners() -> AlignersResult:
     return AlignersResult(
         aligners=statuses,
         any_available=any(a.available for a in statuses),
+        preferred=preferred_algorithm(statuses),
     )
 
 

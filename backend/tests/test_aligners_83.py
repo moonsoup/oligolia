@@ -19,6 +19,7 @@ import stat
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.routers import alignment
 from backend.routers.alignment import aligner_statuses
 
 HEMOGLOBINS = [
@@ -159,3 +160,90 @@ def test_msa_too_few_sequences_still_beats_detection(
         "sequences": HEMOGLOBINS[:1], "algorithm": "muscle",
     })
     assert r.status_code == 400, r.text
+
+
+# ── Round 2: which aligner should be run, decided once ───────────────────────
+
+
+@pytest.fixture()
+def fake_clustalw(tmp_path, monkeypatch: pytest.MonkeyPatch) -> str:
+    """A fake `clustalw` first on PATH, with no MUSCLE anywhere."""
+    path = _fake_executable(tmp_path, "clustalw")
+    monkeypatch.setenv("PATH", str(tmp_path))
+    return path
+
+
+def test_preferred_is_the_default_when_the_default_is_installed(
+    client: TestClient, fake_muscle: str
+) -> None:
+    r = client.get("/alignment/aligners")
+    assert r.json()["preferred"] == "muscle"
+    assert alignment.preferred_algorithm() == "muscle"
+
+
+def test_preferred_falls_back_to_the_only_installed_aligner(
+    client: TestClient, fake_clustalw: str
+) -> None:
+    """The case that broke round 1: ClustalW installed, MUSCLE not.
+
+    "Something is available" is not "the default is available". A caller that
+    gates on the first and then runs the second gets a 503 it was told would not
+    happen, which is the whole of #83.
+    """
+    data = client.get("/alignment/aligners").json()
+    assert data["any_available"] is True
+    assert data["preferred"] == "clustalw"
+    assert alignment.preferred_algorithm() == "clustalw"
+
+
+def test_preferred_is_none_when_nothing_is_installed(
+    client: TestClient, no_aligners: None
+) -> None:
+    assert client.get("/alignment/aligners").json()["preferred"] is None
+    assert alignment.preferred_algorithm() is None
+
+
+#: A stand-in ClustalW that honours the flags the router passes it and writes a
+#: real (if trivial) FASTA alignment — the inputs are already equal length, so
+#: copying them through is a well-formed result. Enough to prove the run path
+#: accepts what `preferred` names, without installing an aligner in CI.
+_STUB_CLUSTALW = """#!/bin/sh
+infile=""; outfile=""
+for arg in "$@"; do
+  case "$arg" in
+    -INFILE=*)  infile=${arg#-INFILE=} ;;
+    -OUTFILE=*) outfile=${arg#-OUTFILE=} ;;
+  esac
+done
+# Shell built-ins only: PATH is the tmp dir, so `cp` is not findable here.
+while IFS= read -r line; do printf '%s\\n' "$line"; done < "$infile" > "$outfile"
+"""
+
+
+@pytest.fixture()
+def stub_clustalw(tmp_path, monkeypatch: pytest.MonkeyPatch) -> str:
+    """A ClustalW stub that really aligns (trivially), alone on PATH."""
+    path = _fake_executable(tmp_path, "clustalw")
+    with open(path, "w") as fh:
+        fh.write(_STUB_CLUSTALW)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    return path
+
+
+def test_running_the_preferred_aligner_never_hits_the_missing_aligner_503(
+    client: TestClient, stub_clustalw: str
+) -> None:
+    """Whatever `preferred` names, `/multiple` runs it instead of refusing.
+
+    This is the guarantee the MSA tab leans on: it offers what `preferred`
+    reports, so a Run must not come back with "that aligner is not installed".
+    Round 1 offered ClustalW's availability and then ran MUSCLE, which is exactly
+    the 503 this asserts cannot happen.
+    """
+    algorithm = client.get("/alignment/aligners").json()["preferred"]
+    assert algorithm == "clustalw"
+    r = client.post("/alignment/multiple", json={
+        "sequences": HEMOGLOBINS, "algorithm": algorithm,
+    })
+    assert r.status_code == 200, r.text
+    assert [a["id"] for a in r.json()["aligned"]] == [s["id"] for s in HEMOGLOBINS]

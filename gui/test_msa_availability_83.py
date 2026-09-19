@@ -22,6 +22,7 @@ import stat
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest  # noqa: E402
+from PyQt6.QtCore import Qt  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from gui.panels.alignment_panel import AlignmentPanel  # noqa: E402
@@ -156,3 +157,175 @@ def test_pairwise_tab_is_untouched_when_no_aligner_is_installed(
     shown = panel._pair_result.toPlainText()
     assert shown.startswith("Seq1"), shown
     assert "error" not in shown.lower(), shown
+
+
+# ── Round 2: the tab must run the aligner it says is available ───────────────
+#
+# Round 1 gated the controls on "any aligner available" but still ran the
+# hard-coded default. On a ClustalW-only machine that meant enabled controls, no
+# notice, and the missing-MUSCLE 503 after the user pasted sequences and pressed
+# Run — the exact failure #83 exists to prevent, moved one aligner sideways. The
+# selector is the fix, so these drive the selector.
+
+
+def _plant(directory, monkeypatch: pytest.MonkeyPatch, *names: str) -> dict:
+    """Put inert but executable copies of `names` on an otherwise empty PATH."""
+    planted = {}
+    for name in names:
+        path = os.path.join(str(directory), name)
+        with open(path, "w") as fh:
+            fh.write("#!/bin/sh\nexit 0\n")
+        os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        planted[name] = path
+    monkeypatch.setenv("PATH", str(directory))
+    return planted
+
+
+def _record_runs(monkeypatch: pytest.MonkeyPatch) -> list:
+    """Capture the `MSARequest`s the panel sends, without needing a real aligner.
+
+    Patches the router module the panel calls through, so a panel that went back
+    to calling its own private copy of MUSCLE would record nothing and fail.
+    """
+    from backend.routers import alignment
+
+    calls: list = []
+
+    def recording_multiple_align(req):
+        calls.append(req)
+        return alignment.MSAResult(
+            aligned=[{"id": s["id"], "aligned_seq": s["seq"]} for s in req.sequences],
+            consensus="N" * len(req.sequences[0]["seq"]),
+            identity_matrix=[[100.0] * len(req.sequences)] * len(req.sequences),
+        )
+
+    monkeypatch.setattr(alignment, "multiple_align", recording_multiple_align)
+    return calls
+
+
+def _run_msa_and_wait(app: QApplication, panel: AlignmentPanel) -> None:
+    """Click Run the way a user does, then let the worker thread finish."""
+    panel._msa_input.setPlainText(">a\nATGGTGCACCTG\n>b\nATGGTGCATCTG")
+    panel._btn_msa.click()
+    assert panel._msa_worker is not None, "the click must have started a run"
+    assert panel._msa_worker.wait(10_000), "the MSA worker did not finish"
+    app.processEvents()
+
+
+def test_clustalw_only_enables_the_controls_and_runs_clustalw(
+    app: QApplication, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The verifier's round-1 counterexample: ClustalW installed, MUSCLE not.
+
+    The controls are enabled — ClustalW can align these sequences — and the Run
+    that follows must ask for ClustalW. Running the hard-coded MUSCLE here is
+    what produced a 503 after the work, which is the bug #83 is about.
+    """
+    _plant(tmp_path, monkeypatch, "clustalw")
+    calls = _record_runs(monkeypatch)
+
+    panel = AlignmentPanel()
+    panel._tabs.setCurrentIndex(MSA_TAB)
+
+    assert panel._msa_input.isEnabled()
+    assert panel._btn_msa.isEnabled()
+    assert not panel._msa_notice.isVisibleTo(panel)
+    assert panel._msa_algorithm.currentData() == "clustalw"
+    assert "ClustalW" in panel._btn_msa.text(), panel._btn_msa.text()
+
+    _run_msa_and_wait(app, panel)
+
+    assert [c.algorithm for c in calls] == ["clustalw"]
+    assert "Error" not in panel._msa_status.text(), panel._msa_status.text()
+
+
+def test_muscle_is_preferred_and_run_when_both_are_installed(
+    app: QApplication, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With everything installed the tab behaves as it always did: MUSCLE."""
+    _plant(tmp_path, monkeypatch, "muscle", "clustalw")
+    calls = _record_runs(monkeypatch)
+
+    panel = AlignmentPanel()
+    panel._tabs.setCurrentIndex(MSA_TAB)
+    assert panel._msa_algorithm.currentData() == "muscle"
+
+    _run_msa_and_wait(app, panel)
+    assert [c.algorithm for c in calls] == ["muscle"]
+
+
+def test_choosing_the_other_aligner_runs_that_one(
+    app: QApplication, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The selector is not decoration — what it shows is what gets run."""
+    _plant(tmp_path, monkeypatch, "muscle", "clustalw")
+    calls = _record_runs(monkeypatch)
+
+    panel = AlignmentPanel()
+    panel._tabs.setCurrentIndex(MSA_TAB)
+    panel._msa_algorithm.setCurrentIndex(panel._msa_algorithm.findData("clustalw"))
+
+    _run_msa_and_wait(app, panel)
+    assert [c.algorithm for c in calls] == ["clustalw"]
+
+
+def test_a_missing_aligner_is_listed_but_cannot_be_chosen(
+    app: QApplication, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MUSCLE stays visible while missing — greyed, hinted, not selectable."""
+    _plant(tmp_path, monkeypatch, "clustalw")
+
+    panel = AlignmentPanel()
+    panel._tabs.setCurrentIndex(MSA_TAB)
+
+    names = [panel._msa_algorithm.itemData(i) for i in range(panel._msa_algorithm.count())]
+    assert names == ["muscle", "clustalw"], names
+
+    model = panel._msa_algorithm.model()
+    assert not model.item(names.index("muscle")).isEnabled()
+    assert model.item(names.index("clustalw")).isEnabled()
+    assert "not installed" in panel._msa_algorithm.itemText(names.index("muscle")).lower()
+    assert "brew install muscle" in panel._msa_algorithm.itemData(
+        names.index("muscle"), Qt.ItemDataRole.ToolTipRole
+    )
+
+
+def test_no_aligner_leaves_nothing_selected_and_nothing_runnable(
+    app: QApplication, no_aligners: None
+) -> None:
+    """With nothing installed the selector is disabled and picks nothing."""
+    panel = AlignmentPanel()
+    panel._tabs.setCurrentIndex(MSA_TAB)
+
+    assert not panel._msa_algorithm.isEnabled()
+    assert panel._msa_algorithm.currentData() is None
+    assert panel._btn_msa.text() == "Run MSA (requires MUSCLE)"
+
+
+def test_the_selector_offers_exactly_what_the_router_reports(
+    app: QApplication, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One decision: the panel's default is the router's `preferred`."""
+    from backend.routers.alignment import preferred_algorithm
+
+    _plant(tmp_path, monkeypatch, "clustalw")
+    panel = AlignmentPanel()
+    assert panel._msa_algorithm.currentData() == preferred_algorithm() == "clustalw"
+
+
+def test_losing_the_chosen_aligner_falls_back_on_re_show(
+    app: QApplication, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pick that stops being installed is replaced, not kept and then 503'd."""
+    _plant(tmp_path, monkeypatch, "muscle", "clustalw")
+    panel = AlignmentPanel()
+    panel._tabs.setCurrentIndex(MSA_TAB)
+    panel._msa_algorithm.setCurrentIndex(panel._msa_algorithm.findData("clustalw"))
+
+    # ClustalW is uninstalled while the app is open; MUSCLE stays.
+    os.unlink(os.path.join(str(tmp_path), "clustalw"))
+    panel._tabs.setCurrentIndex(0)
+    panel._tabs.setCurrentIndex(MSA_TAB)
+
+    assert panel._msa_algorithm.currentData() == "muscle"
+    assert panel._btn_msa.isEnabled()
