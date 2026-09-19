@@ -1,0 +1,137 @@
+{
+  "block": "gx-requirements",
+  "contract": "oligolia-gx-tests",
+  "round": 1,
+  "capability": "translation and ORF finding",
+  "subject": [
+    "backend/routers/analysis.py:382 GENETIC_CODE",
+    "backend/routers/analysis.py:497 find_orfs(sequence, min_length_aa, include_all_starts)",
+    "backend/routers/sequences.py:115 edit_sequence(operation='translate')",
+    "backend/services/annotations.py:65 restated_translation(ann, sequence)",
+    "gui/panels/sequence_panel.py:178 ReadingFrameHighlighter",
+    "gui/panels/sequence_panel.py:1077 the GUI's own translate branch"
+  ],
+  "authority": [
+    "gx/corpus/ncbi/gc.prt#ncbieaa -- NCBI's genetic-code tables: the amino acid of all 64 codons per table, in TCAG x TCAG x TCAG codon order",
+    "gx/corpus/ncbi/gc.prt#sncbieaa -- the same 64 positions marked M at every codon the table calls a START and * at every stop",
+    "gx/corpus/biopython-1.85/Bio/Data/CodonTable.py#register_ncbi_table -- the machine-readable second rendering of the same tables (names, id, table, stop_codons, start_codons)",
+    "gx/corpus/biopython-1.85/Bio/Seq.py#def translate -- table, stop_symbol, to_stop, cds and the BiopythonWarning('Partial codon, len(sequence) not a multiple of three')",
+    "gx/corpus/inputs/NC_012920.1.gb#/translation= -- NCBI's own protein for each of the 13 rCRS CDS features: a recorded literal nothing in this repo produced",
+    "gx/corpus/inputs/NC_012920.1.gb#/transl_table=2 -- the record declaring its own genetic code",
+    "gx/corpus/inputs/NC_012920.1.gb#/transl_except=(pos:12137,aa:TERM) -- NCBI declaring an incomplete, post-transcriptionally completed stop codon",
+    "backend/sequence_text.py#One definition of what a pasted sequence *is* (#86) -- the app's OWN stated invariant about layout characters, used as the standard in OR-11"
+  ],
+  "conventions": {
+    "coordinates": "0-based half-open on the TOP strand for both strands. backend/routers/analysis.py:112 documents ORF.start as '0-based position on input strand'; a negative-frame ORF reported [start, end) is read as reverse_complement(sequence[start:end]).",
+    "frames": "+1/+2/+3 read sequence[offset:] for offset 0/1/2; -1/-2/-3 read reverse_complement(sequence)[offset:]. A span [s, e) in reverse-strand space is [n - e, n - s) on the top strand.",
+    "initiator": "The reported `protein` renders the initiator as M whatever the start codon codes for elsewhere -- the GenBank /translation convention. Every requirement below that compares a protein to a literal translation compares protein[1:] against translation[1:] and says so.",
+    "stop_in_span": "For a complete ORF the reported span INCLUDES the terminating stop codon, so length_nt == 3 * (length_aa + 1). Established by OR-5, not assumed."
+  },
+  "requirements": [
+    {
+      "id": "OR-1",
+      "statement": "backend.routers.analysis.GENETIC_CODE is NCBI translation table 1, exactly: all 64 codons present, each mapping to the amino acid gc.prt's ncbieaa string gives for that codon, with '*' at TAA, TAG and TGA and nothing else.",
+      "parameters": {"table_id": 1, "codons": 64},
+      "authority": "gx/corpus/ncbi/gc.prt#ncbieaa, cross-checked against gx/corpus/biopython-1.85/Bio/Data/CodonTable.py#register_ncbi_table by re-rendering Biopython's table 1 back into the ncbieaa/sncbieaa strings and requiring an exact match.",
+      "oracle": "gc.prt, independently of Biopython; the two authorities must first agree with each other."
+    },
+    {
+      "id": "OR-2",
+      "statement": "Alternative codes change exactly the codons they should and nothing else. Against gc.prt: table 2 (vertebrate mitochondrial) differs from table 1 at exactly four codons -- TGA '*'->'W', ATA 'I'->'M', AGA 'R'->'*', AGG 'R'->'*'; table 11 (bacterial) differs from table 1 at ZERO codons and differs only in its start set, adding GTG, ATT, ATC and ATA. Through the subject: restated_translation on the real MT-CYTB bases of NC_012920.1 with /transl_table=2 and with /transl_table=1 must produce proteins differing at exactly the residue positions whose codon is one of those four, and restated_translation with /transl_table=11 must equal /transl_table=1 residue for residue.",
+      "parameters": {"tables": [1, 2, 11], "differing_codons_1_vs_2": ["AGA", "AGG", "ATA", "TGA"], "differing_codons_1_vs_11": [], "record": "NC_012920.1", "feature": "MT-CYTB", "span": [14746, 15887]},
+      "authority": "gx/corpus/ncbi/gc.prt#ncbieaa and #sncbieaa for tables 1, 2 and 11.",
+      "oracle": "gc.prt for the codon sets; index re-derivation of MT-CYTB's codons for the residue positions."
+    },
+    {
+      "id": "OR-3",
+      "statement": "Every ORF the subject reports in frame f is exactly a segment of Bio.Seq.translate(frame_substring(sequence, f), table=1) at the residue offset the ORF's own coordinates imply -- i.e. translation of a frame equals Biopython's translation of that frame's substring with the same table, not merely a string of the right length.",
+      "parameters": {"table_id": 1, "frames": [1, 2, 3, -1, -2, -3], "min_length_aa": 30, "inputs": ["puc19_L09137.2", "NC_001699.1", "AF071878.1", "NG_007400.1", "NC_012920.1"]},
+      "authority": "gx/corpus/biopython-1.85/Bio/Seq.py#def translate",
+      "oracle": "Bio.Seq.translate on the frame substring, plus index arithmetic to locate the ORF within it."
+    },
+    {
+      "id": "OR-4",
+      "statement": "Reverse-strand frames map back to top-strand coordinates correctly: for every ORF reported with frame in {-1,-2,-3}, reverse_complement(sequence[start:end]) begins with the reported start_codon and, translated, yields the reported protein (modulo the initiator-M convention). The span must round-trip: mapping [start, end) into reverse-strand space and back returns [start, end).",
+      "parameters": {"frames": [-1, -2, -3], "coordinate_system": "0-based half-open, top strand", "min_length_aa": 30, "inputs": ["puc19_L09137.2", "NC_001699.1", "AF071878.1", "NG_007400.1", "NC_012920.1"]},
+      "authority": "gx/corpus/biopython-1.85/Bio/Seq.py#def reverse_complement; backend/routers/analysis.py:112 for the declared coordinate system.",
+      "oracle": "Re-extraction by index from the pinned bases."
+    },
+    {
+      "id": "OR-5",
+      "statement": "Every reported ORF re-extracts. Slicing the input at [start, end) (reverse-complemented for a negative frame) yields bases whose first three characters are a start codon of the start set in force, whose last three are a table-1 stop codon, and which contain no table-1 stop codon in any interior in-frame position. An ORF that instead runs off the end of the molecule must be flagged as partial rather than reported under the same shape (see OR-9).",
+      "parameters": {"table_id": 1, "start_codons_default": ["ATG"], "stop_codons": ["TAA", "TAG", "TGA"], "min_length_aa": 30},
+      "authority": "gx/corpus/ncbi/gc.prt#ncbieaa (which codons are stops) and #sncbieaa (which are starts).",
+      "oracle": "Index re-extraction from the pinned bases plus gc.prt."
+    },
+    {
+      "id": "OR-6",
+      "statement": "include_all_starts=True draws its start codons from the genetic code in force, not from a free-floating list. gc.prt's sncbieaa for table 1 marks exactly three codons M: ATG, CTG and TTG. So with include_all_starts=True and table 1, a CTG-initiated ORF must be found and a GTG-initiated one must not (GTG is a start in tables 2 and 11, not in table 1).",
+      "parameters": {"table_id": 1, "start_codons_all": ["ATG", "CTG", "TTG"], "not_a_table_1_start": ["GTG"], "min_length_aa": 30},
+      "authority": "gx/corpus/ncbi/gc.prt#sncbieaa for table 1; gx/corpus/biopython-1.85/Bio/Data/CodonTable.py#register_ncbi_table start_codons for table 1.",
+      "oracle": "gc.prt, and real CTG-/GTG-initiated frames located by index in the pinned NG_007400.1 bases."
+    },
+    {
+      "id": "OR-7",
+      "statement": "min_length_aa is honoured exactly and in both directions: no reported ORF is shorter than min_length_aa residues, and every ORF at least that long is reported. Asserted as set equality between the subject's six-frame result and an independent index-walking ORF finder written from the gc.prt definition, over full-length pinned inputs at two thresholds.",
+      "parameters": {"min_length_aa": [30, 100], "table_id": 1, "start_codons": ["ATG"], "inputs": ["puc19_L09137.2", "NC_001699.1", "AF071878.1", "NG_007400.1", "NC_012920.1"]},
+      "authority": "gx/corpus/ncbi/gc.prt#ncbieaa and #sncbieaa.",
+      "oracle": "gx/orf/orf_oracle.find_orfs_oracle -- a second ORF finder written from the definition, not from the subject."
+    },
+    {
+      "id": "OR-8",
+      "statement": "Every reported ORF is a whole number of codons: end - start == length_nt, and length_nt % 3 == 0. A reported span is a coding interval; it cannot end part-way through a codon.",
+      "parameters": {"min_length_aa": 30, "table_id": 1},
+      "authority": "gx/corpus/biopython-1.85/Bio/Seq.py#def translate -- which refuses to treat a non-multiple of three as a complete coding interval, warning 'Partial codon, len(sequence) not a multiple of three'.",
+      "oracle": "Arithmetic on the subject's own reported fields; no convention assumed beyond 'a codon is three bases'."
+    },
+    {
+      "id": "OR-9",
+      "statement": "Partial trailing codons are handled explicitly, not silently. Re-extracting any reported ORF's bases by index and translating them with Bio.Seq.translate must not raise BiopythonWarning('Partial codon'), and an ORF that reaches the end of the molecule without a stop codon must be distinguishable as partial from the result alone -- a consumer must not have to re-derive the bases to learn that the reported protein is unterminated.",
+      "parameters": {"min_length_aa": 30, "table_id": 1, "cases": ["NC_012920.1 MT-ND4 bases [10759:12137), 1378 nt, /transl_except=(pos:12137,aa:TERM)", "NC_012920.1 MT-CYTB bases [14746:15887), 1141 nt, /transl_except=(pos:15887,aa:TERM)"]},
+      "authority": "gx/corpus/biopython-1.85/Bio/Seq.py#Partial codon, len(sequence) not a multiple of three; gx/corpus/inputs/NC_012920.1.gb#/transl_except=(pos:12137,aa:TERM) for the biology -- NCBI itself declares these CDS ends incomplete.",
+      "oracle": "Bio.Seq.translate's warning behaviour on the re-extracted bases; the ORF model's own fields for distinguishability."
+    },
+    {
+      "id": "OR-10",
+      "statement": "RNA input denotes the same molecule as its DNA back-transcription. find_orfs on an RNA sequence must report the same ORFs, at the same coordinates, as find_orfs on the same sequence with U written T -- or refuse the input. It must not return an empty result.",
+      "parameters": {"min_length_aa": 30, "table_id": 1, "inputs": ["puc19_L09137.2", "NG_007400.1"], "expected_orfs": {"puc19_L09137.2": 13, "NG_007400.1": 171}},
+      "authority": "gx/corpus/biopython-1.85/Bio/Seq.py#def translate -- Biopython translates T and U identically; gx/corpus/biopython-1.85/Bio/Data/CodonTable.py#unambiguous_rna_by_id, which registers the same tables over the RNA alphabet.",
+      "oracle": "The subject's own answer for the DNA spelling of the identical molecule, which OR-7 has already pinned against an independent finder."
+    },
+    {
+      "id": "OR-11",
+      "statement": "Layout characters do not move the ORF coordinates. NG_007400.1's bases wrapped at 60 columns with CRLF line endings denote the same 24,544-base molecule: sequence_length must be 24544 and the reported ORF set must be identical to the unwrapped input's. The app states this invariant itself -- backend/sequence_text.py exists precisely because 'every endpoint and GUI call site that analyses the same template box has to agree on which characters are the molecule and which are layout'.",
+      "parameters": {"input": "NG_007400.1", "true_length": 24544, "wrap": 60, "line_ending": "CRLF", "min_length_aa": 30, "expected_orfs": 171},
+      "authority": "backend/sequence_text.py#One definition of what a pasted sequence *is* (#86) and backend/sequence_text.py#def normalize_template -- the app's own definition, already applied by the restriction endpoints.",
+      "oracle": "normalize_template on the wrapped text, plus the subject's own answer for the unwrapped molecule."
+    },
+    {
+      "id": "OR-12",
+      "statement": "On a circular molecule the ORF set does not depend on where the record happens to start. pUC19 is a 2686 bp circular plasmid whose bla gene is a complete 286-residue ORF at top-strand [1625:2486) in frame -3. Rotating the origin into the middle of that gene must not lose it: the multiset of reported protein strings must be identical for the unrotated molecule and for rotations of 1700, 2000 and 2400 bases.",
+      "parameters": {"input": "puc19_L09137.2", "length": 2686, "topology": "circular", "rotations": [1700, 2000, 2400], "min_length_aa": 30, "bla_length_aa": 286, "bla_span": [1625, 2486], "bla_frame": -3},
+      "authority": "gx/corpus/MANIFEST.json#inputs/puc19_L09137.2.txt (GenBank L09137.2, circular) and the app's own Sequence.is_circular, which it carries through every other operation.",
+      "oracle": "The subject's own answer for the unrotated molecule; a rotation is the identity on a circle, so no second ORF finder is needed."
+    },
+    {
+      "id": "OR-13",
+      "statement": "The ORF finder can be asked for a non-standard genetic code. NC_012920.1 declares /transl_table=2 for all 13 of its CDS features; its MT-ND5 gene is one continuous 603-residue reading frame under table 2 but is interrupted by 11 internal TGA codons, which table 2 reads as tryptophan and table 1 reads as stop. Given MT-ND5's bases and table 2, the finder must report one ORF of 603 residues.",
+      "parameters": {"table_id": 2, "record": "NC_012920.1", "feature": "MT-ND5", "span": [12336, 14148], "length_nt": 1812, "length_aa": 603, "internal_tga": 11, "min_length_aa": 30},
+      "authority": "gx/corpus/inputs/NC_012920.1.gb#/transl_table=2 and #/translation= for MT-ND5 (603 residues, NCBI's own literal); gx/corpus/ncbi/gc.prt#ncbieaa for table 2.",
+      "oracle": "NCBI's recorded /translation literal, and index re-derivation of the 11 TGA positions."
+    },
+    {
+      "id": "OR-14",
+      "statement": "restated_translation reproduces NCBI's own protein for every CDS of NC_012920.1: all 13 /translation qualifiers, byte for byte, under the /transl_table=2 each feature declares. This covers the minus strand (MT-ND6, [14148:14673)), six spans that are not a multiple of three because the stop codon is completed post-transcriptionally (MT-ND1, ND2, COX3, ND3, ND4, CYTB), and the initiator-methionine convention (MT-ND2 starts ATT, which gc.prt marks a table-2 start and which NCBI therefore writes M).",
+      "parameters": {"table_id": 2, "record": "NC_012920.1", "cds_count": 13, "ragged_spans": 6, "minus_strand": ["MT-ND6"], "non_atg_start": {"MT-ND2": "ATT"}},
+      "authority": "gx/corpus/inputs/NC_012920.1.gb#/translation= -- recorded literals; gx/corpus/ncbi/gc.prt#sncbieaa for table 2, which marks ATT a start codon (M).",
+      "oracle": "The 13 recorded /translation literals."
+    },
+    {
+      "id": "OR-15",
+      "statement": "The translate edit operation handles a trailing partial codon explicitly. POST /sequences/{id}/edit with operation='translate' on a 17-base sequence must either refuse the input or say in its result that a partial trailing codon was dropped. Reporting 'Translated 17 nt -> 5 aa' -- which is arithmetically impossible, 5 residues being 15 bases -- while emitting Biopython's 'Partial codon' warning to a stream a desktop user never reads, is neither.",
+      "parameters": {"input_length_nt": 17, "output_length_aa": 5, "bases_dropped": 2, "operation": "translate", "table_id": 1},
+      "authority": "gx/corpus/biopython-1.85/Bio/Seq.py#Partial codon, len(sequence) not a multiple of three -- 'Explicitly trim the sequence or add trailing N before translation. This may become an error in future.' backend/services/annotations.py:76 shows the app already knows this ('A trailing partial codon is dropped before translating, which is what Bio.Seq.translate does with it anyway, minus the warning').",
+      "oracle": "The warning Bio.Seq.translate raises, captured in-process, against the result the subject reports."
+    }
+  ]
+}

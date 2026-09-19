@@ -1,0 +1,61 @@
+{
+  "block": "gx-test-design",
+  "contract": "oligolia-gx-tests",
+  "round": 1,
+  "capability": "translation and ORF finding",
+  "register": "gx/orf/register.json",
+  "helpers": [
+    {
+      "path": "gx/orf/orf_oracle.py",
+      "role": "Independent oracles: gc.prt readers, Bio.Seq.translate wrappers, index re-extraction, coordinate mapping, and a second six-frame ORF finder written from the definition. Imported as `from orf_oracle import ...` — never `from conftest import ...`, so this round's tests do not collide with gx/, gx/coords/ or gx/crispr/ in one process."
+    },
+    {
+      "path": "gx/orf/conftest.py",
+      "role": "pytest fixtures only: the pinned full-length inputs, the rCRS SeqRecord and its 13 CDS Annotations as the app parses them, and the two subject entry points (find_orfs, the translate edit operation with its warnings captured)."
+    }
+  ],
+  "tests": [
+    {
+      "id": "gx-or-1",
+      "file": "gx/orf/test_orf_genetic_code.py",
+      "covers": ["OR-1", "OR-2", "OR-6"],
+      "oracle": "gx/corpus/ncbi/gc.prt read as text, cross-checked by re-rendering Biopython's tables 1/2/11 back into its ncbieaa/sncbieaa strings; plus an index-derived ORF set over NG_007400.1 for the start-codon requirement."
+    },
+    {
+      "id": "gx-or-2",
+      "file": "gx/orf/test_orf_frames.py",
+      "covers": ["OR-3", "OR-4", "OR-5", "OR-7", "OR-8"],
+      "oracle": "Bio.Seq.translate on each frame's substring, re-extraction by index from the pinned bases, and orf_oracle.find_orfs_oracle — a second six-frame finder written from gc.prt, not from the subject."
+    },
+    {
+      "id": "gx-or-3",
+      "file": "gx/orf/test_orf_partial.py",
+      "covers": ["OR-9"],
+      "oracle": "The BiopythonWarning('Partial codon') Bio.Seq.translate raises on a re-extracted interval, and the ORF model's own field list; the inputs are the real MT-ND4 and MT-CYTB coding spans NCBI marks /transl_except=(...,aa:TERM)."
+    },
+    {
+      "id": "gx-or-4",
+      "file": "gx/orf/test_orf_input.py",
+      "covers": ["OR-10", "OR-11"],
+      "oracle": "The subject's own answer for the reference spelling of the same molecule (pinned against an independent finder by OR-7), plus backend.sequence_text.normalize_template — the app's own definition of what layout is."
+    },
+    {
+      "id": "gx-or-5",
+      "file": "gx/orf/test_orf_circular.py",
+      "covers": ["OR-12"],
+      "oracle": "The subject's answer for the unrotated pUC19 record. A rotation is the identity on a circular molecule, so no second finder is needed; OR-7 has already pinned the unrotated answer independently."
+    },
+    {
+      "id": "gx-or-6",
+      "file": "gx/orf/test_orf_alt_code.py",
+      "covers": ["OR-13", "OR-14"],
+      "oracle": "The 13 /translation qualifiers of NC_012920.1 — recorded literals from NCBI — and gc.prt's tables 1 and 2 for which codons the two read differently."
+    },
+    {
+      "id": "gx-or-7",
+      "file": "gx/orf/test_orf_translate_op.py",
+      "covers": ["OR-15"],
+      "oracle": "Bio.Seq.translate on the same bytes, and the BiopythonWarning it raises, captured in-process and compared against what the subject's own result message says."
+    }
+  ]
+}

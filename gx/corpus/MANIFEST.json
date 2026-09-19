@@ -132,6 +132,27 @@
       "source": "Pinned TEST INPUT, not an oracle: RefSeqGene NG_007400.1 (Homo sapiens collagen type I alpha 1 chain, COL1A1, LRG_1, chromosome 17; 24,544 bp, linear), fetched once from NCBI E-utilities efetch (db=nuccore, id=NG_007400.1, rettype=gbwithparts, retmode=text) and saved byte-for-byte. Added for this round because the capability under test is guide design at real scale and the corpus held nothing bigger than a 5 kb virus: one full-length human gene, nine times pUC19, yielding 5409 SpCas9 / 490 AsCas12a / 24523 LwaCas13a candidates. Alphabet is pure ACGT (no assembly gaps), so every index re-derivation over it is exact.",
       "license": "GenBank/RefSeq record -- public domain (NCBI places GenBank records in the public domain; RefSeq records carry no copyright restrictions, https://www.ncbi.nlm.nih.gov/home/about/policies/).",
       "retrieved": "2026-09-19"
+    },
+    {
+      "path": "ncbi/gc.prt",
+      "sha256": "2aecbdd09ecc5e0d233c105090a593737298ef93d88f6bc0c1bef26df6051a04",
+      "source": "THE authority for this round: NCBI's genetic-code tables, fetched once from https://ftp.ncbi.nlm.nih.gov/entrez/misc/data/gc.prt and saved byte-for-byte. The ASN.1 text behind https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi. Each table gives `ncbieaa` (the amino acid of all 64 codons) and `sncbieaa` (`M` at every codon that table calls a START, `*` at every stop), in the codon order the three `-- Base1/2/3` comment lines spell out: TCAG x TCAG x TCAG. Table 1 Standard starts are TTG, CTG, ATG; table 2 Vertebrate Mitochondrial reads TGA as W, ATA as M and AGA/AGG as stops; table 11 Bacterial adds GTG/ATT/ATC/ATA to the start set. gx/orf/orf_oracle.py reads the strings out of this file rather than trusting any Python copy of them, and cross-checks Biopython's tables 1/2/11 against it.",
+      "license": "NCBI-produced data: a work of the U.S. Government, placed in the public domain -- https://www.ncbi.nlm.nih.gov/home/about/policies/ (\"information that is created ... by NCBI ... is in the public domain\"). Freely redistributable in this MIT repository.",
+      "retrieved": "2026-09-19"
+    },
+    {
+      "path": "biopython-1.85/Bio/Data/CodonTable.py",
+      "sha256": "e250e0c40eeb9da4d75438310c8f2317b4e9d88b5eb2ec101e76a1d27f1a5a22",
+      "source": "Biopython 1.85, installed at /usr/local/lib/python3.11/dist-packages/Bio/Data/CodonTable.py. The machine-readable form of gc.prt: `register_ncbi_table` calls carrying each table's `names`, `id`, forward table, `stop_codons` and `start_codons`, exposed as `unambiguous_dna_by_id[n]` / `ambiguous_dna_by_id[n]`. Pinned as a second, independent rendering of the same authority -- gx/orf/orf_oracle.biopython_matches_gc_prt re-renders tables 1, 2 and 11 from here back into gc.prt's ncbieaa/sncbieaa strings and requires an exact match, so neither copy is trusted alone.",
+      "license": "Biopython License Agreement / BSD 3-Clause (see biopython-1.85/LICENSE.rst)",
+      "retrieved": "2026-09-19"
+    },
+    {
+      "path": "inputs/NC_012920.1.gb",
+      "sha256": "7530d659e7174272372814edfecb2ece1f87a444395a861fcdf1b977c4aa5c1f",
+      "source": "Pinned TEST INPUT and recorded-literal oracle: RefSeq NC_012920.1, the Homo sapiens mitochondrion revised Cambridge Reference Sequence (rCRS), 16,569 bp, circular, fetched once from NCBI E-utilities efetch (db=nuccore, rettype=gbwithparts, retmode=text) and saved byte-for-byte. Added for this round because it is the only real record that carries every hard case of the capability at once: 13 CDS features all declaring /transl_table=2 (vertebrate mitochondrial, where TGA is W and AGA/AGG are stops), six of them (ND1, ND2, COX3, ND3, ND4, CYTB) whose spans are NOT a multiple of three because the stop codon is completed post-transcriptionally -- real partial trailing codons, each declared with /transl_except=(pos:...,aa:TERM) -- and one N at 0-based 3106, the rCRS placeholder. Every CDS also carries a /translation qualifier, which is NCBI's own protein and therefore a recorded literal nothing in this repo produced: the gx tests compare against those 13 strings.",
+      "license": "GenBank/RefSeq record -- public domain (NCBI places GenBank records in the public domain; RefSeq records carry no copyright restrictions, https://www.ncbi.nlm.nih.gov/home/about/policies/).",
+      "retrieved": "2026-09-19"
     }
   ]
 }
