@@ -8,13 +8,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton,
     QTableWidget, QTableWidgetItem, QLabel, QComboBox, QSpinBox,
-    QGroupBox, QProgressBar, QHeaderView, QFileDialog, QMessageBox,
+    QGroupBox, QProgressBar, QFileDialog, QMessageBox,
     QCheckBox, QSizePolicy,
 )
 from PyQt6.QtGui import QColor
 
 from backend.models.crispr import CRISPRDesignRequest, CasType
 from backend.routers.crispr import design_guides
+from ..table_header import fit_header_to_labels
 from ..workers import Worker, worker_busy
 
 
@@ -114,11 +115,11 @@ class CRISPRPanel(QWidget):
         )
         # Every column was a flat 100 px, so "ON-TARGET SCORE" rendered as
         # "N-TARGET SCOR" — one of the two numbers a guide is picked on (#78.3).
-        # Sizing to contents measures the header text too; the guide sequence
-        # keeps the leftover width.
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        # Sizing to contents measures the header text too, but in Qt's choice of
+        # font and case, which fit here and clipped by 3 px on macOS; the header
+        # below raises every section to what its own upper-cased label needs in
+        # the live fontMetrics, so it holds on whatever platform runs it.
+        fit_header_to_labels(self._table, stretch=(1,))
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         layout.addWidget(self._table, 1)

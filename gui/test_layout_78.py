@@ -160,6 +160,52 @@ def test_no_crispr_header_section_is_narrower_than_its_label(app: QApplication) 
     )
 
 
+def _sections_narrower_than_labels(table) -> list[tuple[int, str, int, int]]:
+    """The same criterion as above, for any table: (col, label, width, needed)."""
+    header = table.horizontalHeader()
+    metrics = header.fontMetrics()
+    return [
+        (col, table.horizontalHeaderItem(col).text().upper(), header.sectionSize(col),
+         metrics.horizontalAdvance(table.horizontalHeaderItem(col).text().upper())
+         + HEADER_PADDING)
+        for col in range(table.columnCount())
+        if header.sectionSize(col)
+        < metrics.horizontalAdvance(table.horizontalHeaderItem(col).text().upper())
+        + HEADER_PADDING
+    ]
+
+
+@pytest.mark.parametrize("ui_font_px", [15, 17, 19])
+def test_result_headers_fit_their_labels_in_a_wider_ui_font(
+    app: QApplication, ui_font_px: int
+) -> None:
+    """Item 3 on a platform whose UI font is not this container's.
+
+    `ResizeToContents` alone sizes a section from the font Qt renders the
+    *section* in, and from the label as the model stores it; the criterion above
+    is the font `header.fontMetrics()` reports, upper-cased. Those two happen to
+    agree within 3 px here and disagreed by 3 px the other way on the verifier's
+    macOS run, which is how round 1 passed on Linux and still clipped ON-TARGET
+    and OFF-TARGETS for a user. Widening the header's own font relative to the
+    section's reproduces that platform difference deterministically, so the fix
+    can be checked without a Mac.
+    """
+    win = _window(app, 1500, 950)
+    for panel, table in ((win._crispr_panel, "_table"),
+                         (win._primers_panel, "_pcr_table")):
+        _show_tab(app, win, panel)
+        widget = getattr(panel, table)
+        widget.horizontalHeader().setStyleSheet(
+            f"QHeaderView {{ font-size: {ui_font_px}px; }}"
+        )
+        app.processEvents()
+        assert not _sections_narrower_than_labels(widget), (
+            f"at a {ui_font_px}px UI font these {table} headers are cut off "
+            f"(col, label, width, needed): "
+            f"{_sections_narrower_than_labels(widget)} (#78.3)"
+        )
+
+
 # ── 4 / 4b. the input box must not hoard the results table's space ──────────
 
 def test_crispr_target_box_keeps_to_its_size_hint(app: QApplication) -> None:

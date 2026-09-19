@@ -20,6 +20,7 @@ from backend.routers.primers import (
     design_primers, restriction_sites, PrimerDesignRequest, RestrictionRequest,
     describe_tm_conditions, describe_pair_tm,
 )
+from ..table_header import fit_header_to_labels
 from ..workers import Worker, worker_busy
 
 # Presets stored in user config dir
@@ -127,11 +128,9 @@ class PrimersPanel(QWidget):
         self._pcr_table.setHorizontalHeaderLabels(
             ["Pair", "Fwd sequence", "Rev sequence", "Product (bp)", "Fwd Tm", "Rev Tm", "Penalty"])
         # "PRODUCT (BP)" was cut to "RODUCT (BP" at a flat 100 px per column —
-        # the same header-truncation defect as the guide table (#78.3).
-        pcr_header = self._pcr_table.horizontalHeader()
-        pcr_header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        pcr_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        pcr_header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        # the same header-truncation defect as the guide table, and it gets the
+        # same platform-independent header (#78.3).
+        fit_header_to_labels(self._pcr_table, stretch=(1, 2))
         self._pcr_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         pcr_layout.addWidget(self._pcr_table, 1)
 
