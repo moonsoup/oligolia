@@ -29,6 +29,32 @@ Run from `~/Software/Friday_tools/remote_loop/` — the control scripts are shar
 
 ---
 
+## The contract loop — Rockin-Robin `oligolia-fix` (owner's direction, 2026-09-18)
+
+The loops this skill drives are the Rockin-Robin contracts in `~/Software/rockin-robin/contracts/`
+(the correct copy: it has the expert trainer/pruner; `~/Software/projectMan/rockin-robin` is a fork).
+Steps 1–5 below still apply; a FIX now goes through these parties, not through this session:
+
+| Block | Who | How |
+|---|---|---|
+| issue-claim | orchestrator (this session) | `python3 ~/Software/projectMan/scripts/claim_gh_issue.py <N> --repo moonsoup/oligolia` |
+| regression-test + fix-apply | **remote Claude** (`claude-remote`) | `bash ~/Software/Friday_tools/remote_loop/scripts/remote_dispatch_task.sh oligolia "<task>"` — headless, 45 min cap; the task ends with ONE issue comment that is a fenced json `fix-apply` record (commit, regression tests, red/green evidence, notes) |
+| fix-verify | **Codex**, least privilege | `cd ~/Software/rockin-robin && node scripts/rr_fix_verify.ts --contract contracts/oligolia-fix.contract.json --issue <N> --round <R> --runs-dir ~/.local/share/rockin-robin/runs --setup "make venv"` — exit 0 fixed · 10 sent back · 11 exhausted · 12 escalated |
+| fix-close | orchestrator, ONLY on resolution `fixed` | `python3 ~/Software/projectMan/scripts/gh_issue.py close <N> --repo moonsoup/oligolia --body-file <evidence>`; GUI issues also get the offscreen screenshot looked at first |
+
+- `sent_back` → dispatch round R+1 to the remote with the verifier's reason; `exhausted`/`escalated` → a human.
+- The verifier has exec + a writable tmp and **no network**; the issue reaches it as a sha256-pinned
+  snapshot. Never widen its sandbox to get a verdict — least required permissions.
+- An issue with an open decision in it (e.g. #79's default buffer) is split: the mechanical half gets
+  its own issue that can close; the decision stays on the original.
+- Remote tasks must pull/push with `refs/heads/main` while the stray `main` tag exists (#72).
+- Remote logged out: the owner's strategy is to **transfer this machine's login**, not a browser
+  OAuth — `cd ~/Software/rockin-robin && python3 scripts/remote_instance_bootstrap.py transfer-auth
+  --vps root@2.25.209.57 --ssh-key ~/.ssh/ies_hostinger_key --container claude-remote`. The browser
+  flow in Step 4 stays as the fallback.
+
+---
+
 ## Step 1 — ORIENT
 
 ```bash
