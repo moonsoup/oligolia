@@ -442,7 +442,7 @@ class PrimersPanel(QWidget):
             QMessageBox.warning(self, "No enzymes", "Enter one or more enzyme names.")
             return
         enzymes = [e.strip() for e in enzyme_text.replace("+", ",").split(",") if e.strip()]
-        from backend.routers.primers import digest, DigestRequest
+        from backend.routers.primers import digest, DigestRequest, OVERHANG_AMBIGUOUS
         try:
             result = digest(DigestRequest(
                 template=template, enzymes=enzymes,
@@ -450,9 +450,21 @@ class PrimersPanel(QWidget):
             self._last_digest = result  # available to the Assembly tab
             n = len(result.fragments)
             cuts = len(result.cut_positions)
+            # Two enzymes can cut the same bond and leave different ends (AvaI
+            # and KpnI both cut pUC19's MCS at 412). The digest reports that end
+            # as ambiguous instead of picking one (#88); say so here, because
+            # the Assembly tab cannot ligate such an end and the table's
+            # columns do not show end chemistry.
+            shared = sorted({p for f in result.fragments
+                             for p, t in ((f.start, f.left_overhang_type),
+                                          (f.end, f.right_overhang_type))
+                             if t == OVERHANG_AMBIGUOUS})
+            note = ("  ⚠ ambiguous end at "
+                    f"{', '.join(str(p) for p in shared)}: enzymes cutting the same "
+                    "bond leave different ends" if shared else "")
             self._dig_status.setText(
                 f"{cuts} cut site{'s' if cuts != 1 else ''} → {n} fragment{'s' if n != 1 else ''}  "
-                f"(template: {result.template_length:,} bp)"
+                f"(template: {result.template_length:,} bp)" + note
             )
             self._dig_table.setRowCount(n)
             for i, frag in enumerate(result.fragments):

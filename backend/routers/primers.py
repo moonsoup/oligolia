@@ -623,19 +623,41 @@ class DigestRequest(BaseModel):
     is_circular: bool = False
 
 
+#: End chemistry reported when two requested enzymes cut the same top-strand
+#: bond but leave different ends — see ``_cut_ends`` (#88).
+OVERHANG_AMBIGUOUS = "ambiguous"
+
+
+class OverhangOption(BaseModel):
+    """One enzyme's end chemistry at a cut position shared by several enzymes.
+
+    Only populated for an ambiguous end (#88): it lists, deterministically by
+    enzyme name, the end each requested enzyme would leave on its own, so a
+    caller can see what the mixture is made of instead of one arbitrary answer.
+    """
+
+    enzyme: str
+    overhang: str
+    overhang_type: str
+
+
 class DigestFragment(BaseModel):
     start: int
     end: int
     length: int
     sequence: str
     # Single-stranded overhang produced by the cut at each end. Type is
-    # "5'", "3'", "blunt" (blunt cutter), or "none" (a free linear terminus).
+    # "5'", "3'", "blunt" (blunt cutter), "none" (a free linear terminus), or
+    # "ambiguous" (several requested enzymes cut this bond differently, #88).
     # Overhang bases are given on the top strand; for the palindromic-site
     # enzymes in this panel that equals the complementary end's overhang.
     left_overhang: str = ""
     left_overhang_type: str = "none"
     right_overhang: str = ""
     right_overhang_type: str = "none"
+    # Empty unless the corresponding end is "ambiguous" (#88).
+    left_overhang_options: list[OverhangOption] = Field(default_factory=list)
+    right_overhang_options: list[OverhangOption] = Field(default_factory=list)
 
 
 def _overhang_at(template: str, cut: int, ovhg: int, is_circular: bool) -> tuple[str, str]:
@@ -658,6 +680,56 @@ def _overhang_at(template: str, cut: int, ovhg: int, is_circular: bool) -> tuple
     else:
         bases = "".join(template[i] for i in idxs if 0 <= i < n)
     return bases, oh_type
+
+
+def _cut_ends(
+    template: str, enzymes: list[tuple[str, object]], is_circular: bool
+) -> dict[int, tuple[str, str, list[OverhangOption]]]:
+    """Map each 0-based top-strand cut to the end it leaves: (bases, type, options).
+
+    The one place a digest turns enzymes into cut geometry, so every caller gets
+    the same answer for the same molecule (#88).
+
+    A top-strand cut position does not identify an end on its own: two enzymes
+    can cut the same top-strand bond while cutting the bottom strand at
+    different bonds. In pUC19's MCS, AvaI (C^YCGRG, ovhg -4) and KpnI
+    (G_GTAC^C, ovhg +4) both cut at 412, one leaving a 5' CCGG overhang and the
+    other a 3' GTAC overhang. Neither end is what a real AvaI+KpnI double
+    digest produces: whichever enzyme cuts first splits the other's recognition
+    site, so the product is a mixture of the two single-enzyme ends. Such a cut
+    is therefore reported as ``OVERHANG_AMBIGUOUS`` with no bases, plus the per
+    enzyme alternatives — rather than keeping whichever enzyme happened to come
+    last in the request, which made the reported chemistry depend on the order
+    the user typed the enzymes in (#88).
+
+    Enzymes that agree (isoschizomers, or one enzyme listed twice) collapse to
+    the single end they share and stay concrete.
+    """
+    n = len(template)
+    linear = not is_circular
+    bio_seq = Seq(template)
+    # cut -> {(bases, type): [enzyme names]}, insertion order never read back,
+    # so the result is independent of the order ``enzymes`` is given in.
+    variants: dict[int, dict[tuple[str, str], list[str]]] = {}
+    for name, enz in enzymes:
+        for pos in enz.search(bio_seq, linear=linear):
+            cut = (pos - 1) % n if is_circular else (pos - 1)
+            end = _overhang_at(template, cut, enz.ovhg, is_circular)
+            variants.setdefault(cut, {}).setdefault(end, []).append(name)
+
+    ends: dict[int, tuple[str, str, list[OverhangOption]]] = {}
+    for cut, by_end in variants.items():
+        if len(by_end) == 1:
+            (bases, oh_type), _names = next(iter(by_end.items()))
+            ends[cut] = (bases, oh_type, [])
+        else:
+            options = sorted(
+                (OverhangOption(enzyme=name, overhang=bases, overhang_type=oh_type)
+                 for (bases, oh_type), names in by_end.items() for name in names),
+                key=lambda o: o.enzyme,
+            )
+            ends[cut] = ("", OVERHANG_AMBIGUOUS, options)
+    return ends
 
 
 class DigestResult(BaseModel):
@@ -685,22 +757,20 @@ def digest(req: DigestRequest) -> DigestResult:
     # Real cut geometry from Bio.Restriction: search() gives 1-based top-strand
     # cut positions; 0-based cut index (where the downstream fragment starts) is
     # position - 1. Overhang for each cut is derived from the enzyme's ovhg.
-    bio_seq = Seq(template)
-    linear = not req.is_circular
-    cut_overhangs: dict[int, tuple[str, str]] = {}
-    for enzyme in req.enzymes:
-        enz = _ENZYMES[enzyme]
-        for pos in enz.search(bio_seq, linear=linear):
-            cut = (pos - 1) % n if req.is_circular else (pos - 1)
-            cut_overhangs[cut] = _overhang_at(template, cut, enz.ovhg, req.is_circular)
+    # Built once, by the shared helper: two enzymes cutting the same bond
+    # differently give an ambiguous end rather than whichever the caller listed
+    # last, so the report no longer depends on request order (#88).
+    cut_overhangs = _cut_ends(
+        template, [(name, _ENZYMES[name]) for name in req.enzymes], req.is_circular)
 
     cut_positions = sorted(cut_overhangs)
 
     def _ends(start: int, end: int) -> dict:
-        lo, lt = cut_overhangs.get(start, ("", "none"))
-        ro, rt = cut_overhangs.get(end, ("", "none"))
+        lo, lt, lopts = cut_overhangs.get(start, ("", "none", []))
+        ro, rt, ropts = cut_overhangs.get(end, ("", "none", []))
         return {"left_overhang": lo, "left_overhang_type": lt,
-                "right_overhang": ro, "right_overhang_type": rt}
+                "right_overhang": ro, "right_overhang_type": rt,
+                "left_overhang_options": lopts, "right_overhang_options": ropts}
 
     fragments: list[DigestFragment] = []
     if req.is_circular:

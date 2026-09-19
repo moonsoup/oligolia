@@ -11,12 +11,11 @@ verify the junctions actually anneal before joining.
 from __future__ import annotations
 
 from Bio import Restriction
-from Bio.Seq import Seq
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from ..models.sequence import Annotation, MoleculeType, Sequence
-from .primers import _overhang_at
+from .primers import _cut_ends
 
 router = APIRouter(prefix="/cloning", tags=["cloning"])
 
@@ -355,21 +354,21 @@ class GoldenGateRequest(BaseModel):
 def _digest_linear_fragments(seq: str, enz) -> list[dict]:
     """Linear digest of ``seq`` with a Bio.Restriction enzyme, with overhangs.
 
-    Mirrors the digest geometry in routers/primers so the released Golden Gate
-    insert carries the same overhang representation the ligation core expects.
+    Uses the digest geometry in routers/primers rather than restating it, so the
+    released Golden Gate insert carries the same overhang representation the
+    ligation core expects — including its handling of enzymes that share a cut
+    (#88), which a single Type IIS enzyme never triggers but which now has one
+    implementation instead of two.
     """
-    cuts: dict[int, tuple[str, str]] = {}
-    for pos in enz.search(Seq(seq), linear=True):
-        c = pos - 1
-        cuts[c] = _overhang_at(seq, c, enz.ovhg, False)
+    cuts = _cut_ends(seq, [(enz.__name__, enz)], False)
     boundaries = [0, *sorted(cuts), len(seq)]
     frags = []
     for i in range(len(boundaries) - 1):
         s, e = boundaries[i], boundaries[i + 1]
         if e <= s:
             continue
-        lo, lt = cuts.get(s, ("", "none"))
-        ro, rt = cuts.get(e, ("", "none"))
+        lo, lt, _lopts = cuts.get(s, ("", "none", []))
+        ro, rt, _ropts = cuts.get(e, ("", "none", []))
         frags.append({
             "sequence": seq[s:e],
             "left_overhang": lo, "left_overhang_type": lt,

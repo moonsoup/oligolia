@@ -190,3 +190,71 @@ def test_digest_blunt_cutter(client: TestClient) -> None:
     assert inner  # the cut produced blunt ends
     for f in frags:
         assert f["left_overhang"] == "" and f["right_overhang"] == ""
+
+
+# ── Enzymes sharing one top-strand cut (issue #88) ────────────────────────────
+
+# KpnI (G_GTAC^C) and AvaI (C^YCGRG) both cut this molecule at 15: the MCS
+# arrangement GGTACC / CCCGGG that pUC19 carries, minus the other 2,656 bases.
+SHARED_CUT = "AAAAAAAAAA" "GGTACCCGGG" "TTTTTTTTTT"
+
+
+def test_digest_does_not_depend_on_enzyme_order(client: TestClient) -> None:
+    """Same molecule, same enzymes, same answer whichever order they are typed."""
+    one = client.post("/primers/digest",
+                      json={"template": SHARED_CUT, "enzymes": ["AvaI", "KpnI"]}).json()
+    two = client.post("/primers/digest",
+                      json={"template": SHARED_CUT, "enzymes": ["KpnI", "AvaI"]}).json()
+    assert one["cut_positions"] == two["cut_positions"] == [15]
+    assert one["fragments"] == two["fragments"]
+
+
+def test_digest_reports_a_shared_cut_as_ambiguous_with_its_alternatives(
+    client: TestClient,
+) -> None:
+    """Neither single-enzyme end is the product, so neither is reported as one."""
+    data = client.post("/primers/digest",
+                       json={"template": SHARED_CUT, "enzymes": ["AvaI", "KpnI"]}).json()
+    up = next(f for f in data["fragments"] if f["end"] == 15)
+    down = next(f for f in data["fragments"] if f["start"] == 15)
+    assert up["right_overhang_type"] == "ambiguous" and up["right_overhang"] == ""
+    assert down["left_overhang_type"] == "ambiguous" and down["left_overhang"] == ""
+    # The alternatives are kept, sorted by enzyme so they too are order-free.
+    assert up["right_overhang_options"] == down["left_overhang_options"] == [
+        {"enzyme": "AvaI", "overhang": "CCGG", "overhang_type": "5'"},
+        {"enzyme": "KpnI", "overhang": "GTAC", "overhang_type": "3'"},
+    ]
+
+
+def test_digest_single_enzyme_end_chemistry_is_unchanged_at_a_shared_cut(
+    client: TestClient,
+) -> None:
+    """Only a *conflict* is ambiguous: one enzyme alone still reports its real end."""
+    ava = client.post("/primers/digest",
+                      json={"template": SHARED_CUT, "enzymes": ["AvaI"]}).json()
+    kpn = client.post("/primers/digest",
+                      json={"template": SHARED_CUT, "enzymes": ["KpnI"]}).json()
+    ava_up = next(f for f in ava["fragments"] if f["end"] == 15)
+    kpn_up = next(f for f in kpn["fragments"] if f["end"] == 15)
+    assert ava_up["right_overhang_type"] == "5'" and ava_up["right_overhang"] == "CCGG"
+    assert kpn_up["right_overhang_type"] == "3'" and kpn_up["right_overhang"] == "GTAC"
+    assert ava_up["right_overhang_options"] == kpn_up["right_overhang_options"] == []
+    # An enzyme listed twice agrees with itself — that is not a conflict.
+    twice = client.post("/primers/digest",
+                        json={"template": SHARED_CUT, "enzymes": ["KpnI", "KpnI"]}).json()
+    assert next(f for f in twice["fragments"] if f["end"] == 15)["right_overhang"] == "GTAC"
+
+
+def test_circular_digest_does_not_depend_on_enzyme_order(client: TestClient) -> None:
+    """Order-independence holds on the circular path too, cuts and ends alike."""
+    one = client.post("/primers/digest",
+                      json={"template": SHARED_CUT, "enzymes": ["AvaI", "KpnI"],
+                            "is_circular": True}).json()
+    two = client.post("/primers/digest",
+                      json={"template": SHARED_CUT, "enzymes": ["KpnI", "AvaI"],
+                            "is_circular": True}).json()
+    # Everything but the echoed request list, which legitimately keeps the
+    # order it was asked in.
+    assert one["cut_positions"] == two["cut_positions"]
+    assert one["fragments"] == two["fragments"]
+    assert {f["right_overhang_type"] for f in one["fragments"]} == {"ambiguous"}
