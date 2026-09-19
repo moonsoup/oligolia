@@ -71,6 +71,14 @@ def test_an_unwritable_directory_is_reported_not_fatal(window, tmp_path, recorde
     assert "different location" in text
 
 
+@pytest.mark.skipif(
+    os.geteuid() == 0,
+    reason="root ignores directory permission bits, so chmod(0o500) cannot make a "
+           "directory unwritable for this process — the premise this test needs does "
+           "not exist for euid 0. The refused-write path stays covered under root by "
+           "test_a_file_as_the_parent_directory_is_reported, whose premise "
+           "(NotADirectoryError) no uid can bypass (#82).",
+)
 def test_a_read_only_directory_is_reported(window, tmp_path, recorded) -> None:
     ro = tmp_path / "ro"
     ro.mkdir()
@@ -80,6 +88,25 @@ def test_a_read_only_directory_is_reported(window, tmp_path, recorded) -> None:
         assert len(recorded) == 1, recorded
     finally:
         ro.chmod(0o700)  # so tmp_path cleanup works
+
+
+def test_a_file_as_the_parent_directory_is_reported(window, tmp_path, recorded) -> None:
+    """The uid-independent refused-write premise: the parent is a regular file.
+
+    Unlike a chmod'd directory, this one root cannot bypass — open() raises
+    NotADirectoryError for every uid — so the #55 guard stays covered in root
+    containers where the read-only test above is skipped (#82).
+    """
+    parent = tmp_path / "f"
+    parent.write_text("not a directory")
+    target = parent / "out.fasta"
+    assert window._write_text(str(target), ">a\nACGT\n") is False
+    assert len(recorded) == 1, recorded
+    title, text = recorded[0]
+    assert "save" in title.lower()
+    assert str(target) in text
+    assert "different location" in text
+    assert parent.read_text() == "not a directory"  # nothing clobbered the file
 
 
 def test_a_directory_given_as_the_target_is_reported(window, tmp_path, recorded) -> None:
