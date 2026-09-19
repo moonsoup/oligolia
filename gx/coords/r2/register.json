@@ -1,0 +1,557 @@
+[
+  {
+    "id": "CO2-1",
+    "statement": "A feature that strictly CONTAINS an edit grows by the inserted bases and still describes its own feature. POST /sequences/{id}/edit inserting 30 bases at position 3000 of NC_001699.1 must store all 28 features; the five whose interval strictly contains position 3000 (source, prim_transcript, gene, CDS, exon) must each have the containing part's end moved by +30 with its start unmoved, and must extract exactly the pre-edit bases of that feature with the 30 inserted bases spliced in at the corresponding offset \u2014 30 bases longer, not byte-identical. Byte-identity is the wrong standard for a containing feature: those inserted bases are now its bases, which is what shift_annotations does and therefore what CO-14 asks for.",
+    "numeric": true,
+    "parameters": {
+      "input": "gx/corpus/inputs/NC_001699.1.gb",
+      "stored_id": "NC_001699.1",
+      "record_length": 5130,
+      "is_circular": true,
+      "source_annotation_count": 28,
+      "edit": {
+        "name": "insert_30_at_3000",
+        "operation": "insert",
+        "position": 3000,
+        "insert_seq": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "new_id": "NC_001699.1_insert",
+        "start": 3000,
+        "end": 3000,
+        "inserted_bases": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "delta": 30,
+        "expected_length": 5160
+      },
+      "expected_stored_annotation_count": 28,
+      "expected_dropped_count": 0,
+      "expected_is_circular": true,
+      "containing_features": [
+        {
+          "index": 0,
+          "feature_type": "source",
+          "strand": "+",
+          "parts_before": [
+            [
+              0,
+              5130
+            ]
+          ],
+          "parts_after": [
+            [
+              0,
+              5160
+            ]
+          ],
+          "extract_length_before": 5130,
+          "extract_length_after": 5160,
+          "extract_sha256_before": "c41ed77485573eebd0f8bd8bb1165272d94ce84d2cee5e96f7c19f9995be554b",
+          "extract_sha256_after": "bfab49995eefcbd2471c795b6f2456d6da0a0749ac0a5e2b4fefc5ef1637495c"
+        },
+        {
+          "index": 16,
+          "feature_type": "prim_transcript",
+          "strand": "-",
+          "parts_before": [
+            [
+              2526,
+              5115
+            ]
+          ],
+          "parts_after": [
+            [
+              2526,
+              5145
+            ]
+          ],
+          "extract_length_before": 2589,
+          "extract_length_after": 2619,
+          "extract_sha256_before": "f4b59dc0f362ca5360527d465f8d6a2b5a05e9b9ceeb698f300be9c702e3e4ee",
+          "extract_sha256_after": "1736db722af4694389db02229955aa1e7fe2f5a36ec24afa0db4a134ecb43338"
+        },
+        {
+          "index": 19,
+          "feature_type": "gene",
+          "strand": "-",
+          "parts_before": [
+            [
+              2602,
+              5013
+            ]
+          ],
+          "parts_after": [
+            [
+              2602,
+              5043
+            ]
+          ],
+          "extract_length_before": 2411,
+          "extract_length_after": 2441,
+          "extract_sha256_before": "eaeac18a6e7ad25cee1a97986139a501a02f0219f2d62c3725b5a9121c9b0a4a",
+          "extract_sha256_after": "c500362fcfd14fbca6b9aeada01762d98c2417793581ba0dfebc5d0d6c020b3b"
+        },
+        {
+          "index": 20,
+          "feature_type": "CDS",
+          "strand": "-",
+          "parts_before": [
+            [
+              4770,
+              5013
+            ],
+            [
+              2602,
+              4426
+            ]
+          ],
+          "parts_after": [
+            [
+              4800,
+              5043
+            ],
+            [
+              2602,
+              4456
+            ]
+          ],
+          "extract_length_before": 2067,
+          "extract_length_after": 2097,
+          "extract_sha256_before": "8f02d844d68637a2fc119ea23d5e1206973fa220bd872211cbd065bfcc911530",
+          "extract_sha256_after": "85f216a246df7ce3ae91cdec6b938d0e4b0008a400ce26dc146456420d47fd4c"
+        },
+        {
+          "index": 21,
+          "feature_type": "exon",
+          "strand": "-",
+          "parts_before": [
+            [
+              2602,
+              4426
+            ]
+          ],
+          "parts_after": [
+            [
+              2602,
+              4456
+            ]
+          ],
+          "extract_length_before": 1824,
+          "extract_length_after": 1854,
+          "extract_sha256_before": "b0b4f12ad5219d782d1a906f5c4561b3c9ad55e58beff8c77b1589386965f4fa",
+          "extract_sha256_after": "8e14c62225016ba485f89e1b7f4a9645d609201ad782cd6b3979201ac8422ae9"
+        }
+      ],
+      "extract_oracle": "for each part (a,b): bases a<=b<=3000 and 3000<=a<=b are carried unchanged; a part with a < 3000 < b contributes seq[a:3000] + 'A'*30 + seq[3000:b]. Parts are concatenated in stored 5'-to-3' order and each is reverse-complemented on the minus strand, matching Bio.SeqFeature.extract."
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/SeqFeature.py#    def extract(self, parent_sequence, references=None):",
+        "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#     CDS             complement(join(2603..4426,4771..5013))",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO2-2",
+    "statement": "A part strictly DOWNSTREAM of an edit shifts by exactly the net length change and reads byte-identical bases. For each of the three pinned splice edits on NC_001699.1 through POST /sequences/{id}/edit, every stored part whose start is >= the edit's end must be (start+delta, end+delta) and must slice the same bases out of the edited sequence as it did out of the original; every feature none of whose parts contains the edit must extract byte-identically to its pre-edit extract.",
+    "numeric": true,
+    "parameters": {
+      "input": "gx/corpus/inputs/NC_001699.1.gb",
+      "stored_id": "NC_001699.1",
+      "record_length": 5130,
+      "is_circular": true,
+      "source_annotation_count": 28,
+      "edits": [
+        {
+          "name": "insert_30_at_3000",
+          "operation": "insert",
+          "position": 3000,
+          "insert_seq": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "new_id": "NC_001699.1_insert",
+          "start": 3000,
+          "end": 3000,
+          "inserted_bases": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "delta": 30,
+          "expected_length": 5160
+        },
+        {
+          "name": "delete_2100_2200",
+          "operation": "delete",
+          "position": 2100,
+          "end_position": 2200,
+          "new_id": "NC_001699.1_delete",
+          "start": 2100,
+          "end": 2200,
+          "inserted_bases": "",
+          "delta": -100,
+          "expected_length": 5030
+        },
+        {
+          "name": "replace_1600_1650_with_10",
+          "operation": "replace",
+          "position": 1600,
+          "end_position": 1650,
+          "replacement": "AAAAAAAAAA",
+          "new_id": "NC_001699.1_replace",
+          "start": 1600,
+          "end": 1650,
+          "inserted_bases": "AAAAAAAAAA",
+          "delta": -40,
+          "expected_length": 5090
+        }
+      ],
+      "per_edit": [
+        {
+          "name": "insert_30_at_3000",
+          "delta": 30,
+          "containing_feature_indices": [
+            0,
+            16,
+            19,
+            20,
+            21
+          ],
+          "strictly_downstream_feature_indices": [
+            22,
+            23,
+            24,
+            25,
+            26,
+            27
+          ],
+          "strictly_upstream_feature_indices": [
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            17,
+            18
+          ],
+          "straddling_feature_indices": [
+            1
+          ],
+          "no_feature_partially_overlaps_the_edit": true
+        },
+        {
+          "name": "delete_2100_2200",
+          "delta": -100,
+          "containing_feature_indices": [
+            0,
+            5,
+            14,
+            15
+          ],
+          "strictly_downstream_feature_indices": [
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27
+          ],
+          "strictly_upstream_feature_indices": [
+            2,
+            3,
+            4,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13
+          ],
+          "straddling_feature_indices": [
+            1
+          ],
+          "no_feature_partially_overlaps_the_edit": true
+        },
+        {
+          "name": "replace_1600_1650_with_10",
+          "delta": -40,
+          "containing_feature_indices": [
+            0,
+            5,
+            14,
+            15
+          ],
+          "strictly_downstream_feature_indices": [
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27
+          ],
+          "strictly_upstream_feature_indices": [
+            2,
+            3,
+            4,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13
+          ],
+          "straddling_feature_indices": [
+            1
+          ],
+          "no_feature_partially_overlaps_the_edit": true
+        }
+      ],
+      "worked_example_origin_spanning_join": {
+        "index": 1,
+        "feature_type": "rep_origin",
+        "strand": "+",
+        "parts_before": [
+          [
+            5117,
+            5130
+          ],
+          [
+            0,
+            12
+          ]
+        ],
+        "parts_after_insert_30_at_3000": [
+          [
+            5147,
+            5160
+          ],
+          [
+            0,
+            12
+          ]
+        ],
+        "extract_sha256": "df32e57cce9a2e6de51e5b76ab9fa033765188d753b58eced71158f0b433c244",
+        "note": "the origin-spanning join: its first part is strictly downstream of the insert and moves by +30, its second part is strictly upstream and does not move, and the feature still extracts byte-identically"
+      }
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/SeqFeature.py#    def extract(self, parent_sequence, references=None):",
+        "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#     CDS             complement(join(2603..4426,4771..5013))",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CO2-3",
+    "statement": "A feature strictly UPSTREAM of an edit is untouched. For each of the three pinned splice edits, every feature all of whose parts end at or before the edit's start must be stored with byte-identical parts, the same strand, and a byte-identical extract \u2014 the edit must not move it and must not drop it.",
+    "numeric": true,
+    "parameters": {
+      "input": "gx/corpus/inputs/NC_001699.1.gb",
+      "stored_id": "NC_001699.1",
+      "record_length": 5130,
+      "is_circular": true,
+      "source_annotation_count": 28,
+      "edits": [
+        {
+          "name": "insert_30_at_3000",
+          "operation": "insert",
+          "position": 3000,
+          "insert_seq": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "new_id": "NC_001699.1_insert",
+          "start": 3000,
+          "end": 3000,
+          "inserted_bases": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "delta": 30,
+          "expected_length": 5160
+        },
+        {
+          "name": "delete_2100_2200",
+          "operation": "delete",
+          "position": 2100,
+          "end_position": 2200,
+          "new_id": "NC_001699.1_delete",
+          "start": 2100,
+          "end": 2200,
+          "inserted_bases": "",
+          "delta": -100,
+          "expected_length": 5030
+        },
+        {
+          "name": "replace_1600_1650_with_10",
+          "operation": "replace",
+          "position": 1600,
+          "end_position": 1650,
+          "replacement": "AAAAAAAAAA",
+          "new_id": "NC_001699.1_replace",
+          "start": 1600,
+          "end": 1650,
+          "inserted_bases": "AAAAAAAAAA",
+          "delta": -40,
+          "expected_length": 5090
+        }
+      ],
+      "per_edit": [
+        {
+          "name": "insert_30_at_3000",
+          "delta": 30,
+          "containing_feature_indices": [
+            0,
+            16,
+            19,
+            20,
+            21
+          ],
+          "strictly_downstream_feature_indices": [
+            22,
+            23,
+            24,
+            25,
+            26,
+            27
+          ],
+          "strictly_upstream_feature_indices": [
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            17,
+            18
+          ],
+          "straddling_feature_indices": [
+            1
+          ],
+          "no_feature_partially_overlaps_the_edit": true
+        },
+        {
+          "name": "delete_2100_2200",
+          "delta": -100,
+          "containing_feature_indices": [
+            0,
+            5,
+            14,
+            15
+          ],
+          "strictly_downstream_feature_indices": [
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27
+          ],
+          "strictly_upstream_feature_indices": [
+            2,
+            3,
+            4,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13
+          ],
+          "straddling_feature_indices": [
+            1
+          ],
+          "no_feature_partially_overlaps_the_edit": true
+        },
+        {
+          "name": "replace_1600_1650_with_10",
+          "delta": -40,
+          "containing_feature_indices": [
+            0,
+            5,
+            14,
+            15
+          ],
+          "strictly_downstream_feature_indices": [
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27
+          ],
+          "strictly_upstream_feature_indices": [
+            2,
+            3,
+            4,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13
+          ],
+          "straddling_feature_indices": [
+            1
+          ],
+          "no_feature_partially_overlaps_the_edit": true
+        }
+      ]
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/SeqFeature.py#    def extract(self, parent_sequence, references=None):",
+        "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#     CDS             complement(join(2603..4426,4771..5013))",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      }
+    ],
+    "outcome": "unverified"
+  }
+]
