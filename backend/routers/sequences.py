@@ -2,7 +2,10 @@
 
 from fastapi import APIRouter, HTTPException
 from Bio.Seq import Seq
-from ..models.sequence import Sequence, SequenceEditRequest, SequenceEditResult, MoleculeType
+from ..models.sequence import (
+    Annotation, MoleculeType, Sequence, SequenceEditRequest, SequenceEditResult,
+)
+from ..services.annotations import flip_annotations, spliced_annotations
 
 router = APIRouter(prefix="/sequences", tags=["sequences"])
 
@@ -42,6 +45,13 @@ def edit_sequence(seq_id: str, req: SequenceEditRequest) -> SequenceEditResult:
     s = _store[seq_id]
     seq_str = s.seq
     op = req.operation.lower()
+    # How this operation moves the record's features, filled in per branch and
+    # applied once below (#96). `splice` is `(start, end, inserted)` — the same
+    # triple `gui/panels/sequence_panel.py:_commit_edit` builds — and `flip` is
+    # reverse-complement. Neither set means the operation moves no coordinates;
+    # see the block after the chain for what each of those carries.
+    splice: tuple[int, int, int] | None = None
+    flip = False
 
     if op == "insert":
         if req.position is None or req.insert_seq is None:
@@ -50,6 +60,7 @@ def edit_sequence(seq_id: str, req: SequenceEditRequest) -> SequenceEditResult:
         if not (0 <= pos <= len(seq_str)):
             raise HTTPException(400, f"position {pos} out of range [0, {len(seq_str)}]")
         new_seq = seq_str[:pos] + req.insert_seq + seq_str[pos:]
+        splice = (pos, pos, len(req.insert_seq))
         result = SequenceEditResult(
             original_id=seq_id, operation=op, result_seq=new_seq,
             diff_start=pos, diff_end=pos + len(req.insert_seq),
@@ -63,6 +74,7 @@ def edit_sequence(seq_id: str, req: SequenceEditRequest) -> SequenceEditResult:
         if not (0 <= start < end <= len(seq_str)):
             raise HTTPException(400, f"invalid range [{start}, {end})")
         new_seq = seq_str[:start] + seq_str[end:]
+        splice = (start, end, 0)
         result = SequenceEditResult(
             original_id=seq_id, operation=op, result_seq=new_seq,
             diff_start=start, diff_end=start,
@@ -76,6 +88,7 @@ def edit_sequence(seq_id: str, req: SequenceEditRequest) -> SequenceEditResult:
         if not (0 <= start <= end <= len(seq_str)):
             raise HTTPException(400, f"invalid range [{start}, {end})")
         new_seq = seq_str[:start] + req.replacement + seq_str[end:]
+        splice = (start, end, len(req.replacement))
         result = SequenceEditResult(
             original_id=seq_id, operation=op, result_seq=new_seq,
             diff_start=start, diff_end=start + len(req.replacement),
@@ -85,6 +98,7 @@ def edit_sequence(seq_id: str, req: SequenceEditRequest) -> SequenceEditResult:
     elif op == "reverse_complement":
         bio_seq = Seq(seq_str)
         new_seq = str(bio_seq.reverse_complement())
+        flip = True
         result = SequenceEditResult(
             original_id=seq_id, operation=op, result_seq=new_seq,
             message="Reverse complement computed",
@@ -132,6 +146,40 @@ def edit_sequence(seq_id: str, req: SequenceEditRequest) -> SequenceEditResult:
         raise HTTPException(400, f"Unknown operation: {op!r}. Valid: insert, delete, replace, "
                                  "reverse_complement, complement, translate, transcribe, back_transcribe")
 
+    # Move the annotations with the sequence, the way the GUI's edit path has
+    # since #59 — this one passed five fields to `Sequence(...)` and let
+    # `annotations` and `is_circular` fall back to their defaults, so every
+    # feature was silently dropped and a plasmid came out linear (#96).
+    annotations: list[Annotation] = []
+    if flip:
+        annotations = flip_annotations(s.annotations, len(seq_str))
+    elif splice is not None:
+        start, end, inserted = splice
+        kept, lost, restated = spliced_annotations(
+            s.annotations, start=start, end=end, inserted=inserted,
+            new_sequence=result.result_seq,
+        )
+        annotations = kept
+        if restated:
+            result.message += (
+                f"  ·  {len(restated)} /translation(s) restated from the edited bases"
+            )
+        if lost:
+            result.message += (
+                f"  ·  {len(lost)} annotation(s) removed because the edit changed "
+                "their bases"
+            )
+    elif op in ("transcribe", "back_transcribe"):
+        # T↔U over the whole molecule: same length, same coordinates, so every
+        # feature still describes its own bases.
+        annotations = list(s.annotations)
+    # `complement` (without reversing) and `translate` are left with no
+    # annotations, as before: neither has a coordinate mapping that keeps a
+    # feature describing its own bases — complement leaves the interval alone
+    # while replacing the bases under it, and translate changes the coordinate
+    # space from bases to residues. Carrying features across either would state
+    # something false rather than state nothing.
+
     # Persist the edited sequence under a new ID
     new_id = f"{seq_id}_{op}"
     _store[new_id] = Sequence(
@@ -142,6 +190,10 @@ def edit_sequence(seq_id: str, req: SequenceEditRequest) -> SequenceEditResult:
         molecule_type=MoleculeType.PROTEIN if op == "translate" else
                       MoleculeType.RNA if op == "transcribe" else
                       MoleculeType.DNA if op == "back_transcribe" else s.molecule_type,
+        annotations=annotations,
+        # Topology survives every operation that still yields the same molecule;
+        # a translation is a protein and has none.
+        is_circular=s.is_circular and op != "translate",
     )
     return result
 

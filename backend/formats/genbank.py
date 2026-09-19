@@ -88,7 +88,14 @@ def write_genbank(sequences: list[Sequence]) -> str:
     records = []
     for s in sequences:
         seq = Seq(s.seq)
-        r = SeqRecord(seq, id=s.accession or s.id, name=s.name or s.id[:16], description=s.description)
+        # A LOCUS name is one token by definition, and Biopython raises
+        # `ValueError: Invalid whitespace in ... for LOCUS line` rather than
+        # write an unparseable line — so any record whose name had a space
+        # ("NC_001699 (insert)" from the edit endpoint, or anything a user
+        # typed) could not be exported at all (#96). Collapse the whitespace
+        # instead of failing; the stored record keeps its own name untouched.
+        locus = "_".join((s.name or s.id[:16]).split()) or "SEQUENCE"
+        r = SeqRecord(seq, id=s.accession or s.id, name=locus, description=s.description)
         r.annotations["molecule_type"] = s.molecule_type.value
         r.annotations["topology"] = "circular" if s.is_circular else "linear"
         for ann in s.annotations:

@@ -22,7 +22,7 @@ from PyQt6.QtGui import (
 from Bio.Seq import Seq
 from backend.models.sequence import Sequence, MoleculeType, Annotation
 from backend.formats import read_embl, read_fasta, read_fastq, read_genbank, read_snapgene, VENDORS
-from backend.services.annotations import flip_annotations, shift_annotations
+from backend.services.annotations import flip_annotations, spliced_annotations
 from gui.history import UndoStack
 from gui.panels.feature_colors import feature_color_map
 from gui.panels.plasmid_map import PlasmidMapWidget
@@ -972,19 +972,11 @@ class SequencePanel(QWidget):
             )
         elif splice is not None:
             start, end, inserted = splice
-            before = self._active.annotations
-            kept, lost = shift_annotations(
-                before, start=start, end=end, inserted=inserted, new_sequence=new_seq,
+            kept, lost, restated = spliced_annotations(
+                self._active.annotations,
+                start=start, end=end, inserted=inserted, new_sequence=new_seq,
             )
             self._active.annotations = kept
-            # `lost` holds the original objects and both lists keep their input
-            # order, so the survivors line up one-for-one with `kept`.
-            lost_ids = {id(a) for a in lost}
-            survivors = [a for a in before if id(a) not in lost_ids]
-            restated = [
-                a for a, k in zip(survivors, kept)
-                if a.qualifiers.get("translation") != k.qualifiers.get("translation")
-            ]
             if restated:
                 msg += (
                     f"  ·  {len(restated)} /translation(s) restated from the edited "

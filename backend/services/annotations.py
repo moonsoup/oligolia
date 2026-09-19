@@ -15,6 +15,8 @@ downstream exon and leaves the upstream one alone.
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 from Bio.Seq import Seq
 
 from ..models.sequence import Annotation, LocationPart, Strand
@@ -188,6 +190,50 @@ def shift_annotations(
         kept.append(rebuilt)
 
     return kept, dropped
+
+
+class SplicedAnnotations(NamedTuple):
+    """What a splice did to a record's annotations.
+
+    `kept` and `dropped` are `shift_annotations`' own two lists. `restated` holds
+    the *original* objects whose `/translation` was rewritten from the edited
+    bases (#95), so a caller can name them; it is a subset of the features
+    `kept` corresponds to, in the same order.
+    """
+
+    kept: list[Annotation]
+    dropped: list[Annotation]
+    restated: list[Annotation]
+
+
+def spliced_annotations(
+    annotations: list[Annotation],
+    *,
+    start: int,
+    end: int,
+    inserted: int,
+    new_sequence: str | None = None,
+) -> SplicedAnnotations:
+    """`shift_annotations`, plus which features had their translation restated.
+
+    The GUI's `_commit_edit` worked this out inline, so the HTTP edit endpoint
+    had nothing to call and built its stored record from five fields instead —
+    dropping every annotation and the molecule's topology on the way (#96).
+    Both paths call this now, so an edit means the same thing whichever one of
+    them the user reached it through.
+    """
+    kept, dropped = shift_annotations(
+        annotations, start=start, end=end, inserted=inserted, new_sequence=new_sequence
+    )
+    # `dropped` holds the original objects and both lists keep their input
+    # order, so the survivors line up one-for-one with `kept`.
+    lost_ids = {id(a) for a in dropped}
+    survivors = [a for a in annotations if id(a) not in lost_ids]
+    restated = [
+        a for a, k in zip(survivors, kept)
+        if a.qualifiers.get("translation") != k.qualifiers.get("translation")
+    ]
+    return SplicedAnnotations(kept, dropped, restated)
 
 
 def flip_annotations(annotations: list[Annotation], seq_len: int) -> list[Annotation]:
