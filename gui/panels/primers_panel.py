@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton,
     QLabel, QSpinBox, QDoubleSpinBox, QGroupBox, QTableWidget,
     QTableWidgetItem, QProgressBar, QTabWidget, QMessageBox, QHeaderView,
-    QComboBox, QInputDialog, QCheckBox,
+    QComboBox, QInputDialog, QCheckBox, QSizePolicy,
 )
 from PyQt6.QtGui import QColor
 
@@ -46,6 +46,9 @@ class PrimersPanel(QWidget):
 
         # Template
         tmpl_grp = QGroupBox("Template Sequence")
+        # Same defect as the CRISPR target box: ~370 px reserved for a field
+        # capped at 70, with the primer table cramped underneath (#78.4b).
+        tmpl_grp.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         tmpl_layout = QVBoxLayout(tmpl_grp)
         self._template = QTextEdit()
         self._template.setPlaceholderText("Paste or load template DNA sequence…")
@@ -123,10 +126,14 @@ class PrimersPanel(QWidget):
         self._pcr_table.setColumnCount(7)
         self._pcr_table.setHorizontalHeaderLabels(
             ["Pair", "Fwd sequence", "Rev sequence", "Product (bp)", "Fwd Tm", "Rev Tm", "Penalty"])
-        self._pcr_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self._pcr_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        # "PRODUCT (BP)" was cut to "RODUCT (BP" at a flat 100 px per column —
+        # the same header-truncation defect as the guide table (#78.3).
+        pcr_header = self._pcr_table.horizontalHeader()
+        pcr_header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        pcr_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        pcr_header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self._pcr_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        pcr_layout.addWidget(self._pcr_table)
+        pcr_layout.addWidget(self._pcr_table, 1)
 
         # A Tm is not a property of a sequence alone — the same primer reads 53.7
         # degC in this buffer and 64.0 degC in a PCR-like one. The table used to

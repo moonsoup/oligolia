@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QAction
 
 from .styles import DARK_STYLESHEET
+from .tab_rail import RailTabBar
 from .panels import (
     SequencePanel, SearchPanel, CRISPRPanel,
     AlignmentPanel, PrimersPanel, VariantsPanel, PathwaysPanel, WorkflowPanel,
@@ -109,6 +110,9 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
 
         self._tabs = QTabWidget()
+        # RailTabBar keeps the labels upright so all ten tabs fit a 800 px-high
+        # window without a scroll arrow (#78.1, #78.2).
+        self._tabs.setTabBar(RailTabBar())
         self._tabs.setTabPosition(QTabWidget.TabPosition.West)
         self._tabs.setMovable(True)
 

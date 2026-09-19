@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton,
     QTableWidget, QTableWidgetItem, QLabel, QComboBox, QSpinBox,
     QGroupBox, QProgressBar, QHeaderView, QFileDialog, QMessageBox,
-    QCheckBox,
+    QCheckBox, QSizePolicy,
 )
 from PyQt6.QtGui import QColor
 
@@ -39,6 +39,11 @@ class CRISPRPanel(QWidget):
 
         # Target input
         target_grp = QGroupBox("Target Sequence")
+        # The box held ~350 px for a field capped at 80: QTextEdit expands
+        # vertically, so the group box claimed the panel's spare height and then
+        # padded around a field that could not use it, while the results table
+        # below stayed cramped. Fixed height hands that space to the table (#78.4).
+        target_grp.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         target_layout = QVBoxLayout(target_grp)
         self._target_input = QTextEdit()
         self._target_input.setPlaceholderText("Paste target DNA sequence…")
@@ -105,12 +110,18 @@ class CRISPRPanel(QWidget):
         self._table.setColumnCount(9)
         self._table.setHorizontalHeaderLabels(
             ["#", "Guide Sequence (5'→3')", "PAM", "Position", "Strand", "GC%",
-             "On-target score", "Off-targets", "Specificity"]
+             "On-target", "Off-targets", "Specificity"]
         )
-        self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        # Every column was a flat 100 px, so "ON-TARGET SCORE" rendered as
+        # "N-TARGET SCOR" — one of the two numbers a guide is picked on (#78.3).
+        # Sizing to contents measures the header text too; the guide sequence
+        # keeps the leftover width.
+        header = self._table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        layout.addWidget(self._table)
+        layout.addWidget(self._table, 1)
 
     #: Above this, say so instead of quietly shortening the search space.
     LONG_TARGET_NT = 2000

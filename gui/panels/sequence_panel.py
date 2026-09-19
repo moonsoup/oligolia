@@ -397,6 +397,23 @@ class SequencePanel(QWidget):
         self._list.currentItemChanged.connect(self._on_seq_selected)
         left_layout.addWidget(self._list)
 
+        # An empty 400 px list above two buttons reads as broken rather than
+        # empty, so say which it is (#78.5). The label lives in the viewport so
+        # it centres over the list without disturbing its scroll area.
+        self._list_placeholder = QLabel(
+            "No sequences loaded yet.\n\nOpen file… to load a FASTA/GenBank file,\n"
+            "or add one manually below."
+        )
+        self._list_placeholder.setObjectName("subheading")
+        self._list_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._list_placeholder.setWordWrap(True)
+        self._list_placeholder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        placeholder_box = QVBoxLayout(self._list.viewport())
+        placeholder_box.addWidget(self._list_placeholder)
+        self._list.model().rowsInserted.connect(self._sync_list_placeholder)
+        self._list.model().rowsRemoved.connect(self._sync_list_placeholder)
+        self._sync_list_placeholder()
+
         btn_row = QHBoxLayout()
         btn_open = QPushButton("Open file…")
         btn_open.clicked.connect(self._open_file)
@@ -735,6 +752,10 @@ class SequencePanel(QWidget):
         op = self._op_combo.currentData()
         self._pos_widget.setVisible(op in ("delete", "replace"))
         self._insert_widget.setVisible(op in ("insert", "replace"))
+
+    def _sync_list_placeholder(self, *_: object) -> None:
+        """Show the 'nothing here yet' text only while the list is empty."""
+        self._list_placeholder.setVisible(self._list.count() == 0)
 
     def add_sequence(self, seq: Sequence) -> None:
         self._auto_annotate(seq)

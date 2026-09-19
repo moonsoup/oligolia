@@ -249,8 +249,11 @@ QGroupBox {
     color: #94a3b8;
     border: 1px solid #1e293b;
     border-radius: 6px;
-    margin-top: 10px;
-    padding-top: 10px;
+    /* The title is laid out in this margin (subcontrol-origin: margin). At 10px
+       it was shorter than the title's own line, so every group-box title sat on
+       top of its border (#78.5). */
+    margin-top: 18px;
+    padding-top: 8px;
     font-weight: 600;
     font-size: 11px;
     text-transform: uppercase;
