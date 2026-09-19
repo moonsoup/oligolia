@@ -40,7 +40,7 @@ Steps 1–5 below still apply; a FIX now goes through these parties, not through
 | issue-claim | orchestrator (this session) | `python3 ~/Software/projectMan/scripts/claim_gh_issue.py <N> --repo moonsoup/oligolia` |
 | regression-test + fix-apply | **remote Claude** (`claude-remote`) | `bash ~/Software/Friday_tools/remote_loop/scripts/remote_dispatch_task.sh oligolia "<task>"` — headless, 45 min cap; the task ends with ONE issue comment that is a fenced json `fix-apply` record (commit, regression tests, red/green evidence, notes) |
 | fix-verify | **Codex**, least privilege | `cd ~/Software/rockin-robin && node scripts/rr_fix_verify.ts --contract contracts/oligolia-fix.contract.json --issue <N> --round <R> --runs-dir ~/.local/share/rockin-robin/runs --setup "make venv"` — exit 0 fixed · 10 sent back · 11 exhausted · 12 escalated |
-| fix-close | orchestrator, ONLY on resolution `fixed` | `python3 ~/Software/projectMan/scripts/gh_issue.py close <N> --repo moonsoup/oligolia --body-file <evidence>`; GUI issues also get the offscreen screenshot looked at first |
+| fix-close | orchestrator, ONLY on resolution `fixed` | `node scripts/rr_fix_close.ts --run ~/.local/share/rockin-robin/runs/oligolia-fix/<N>/r<R> [--human-check "what you saw"]` (refuses anything but `fixed`); GUI issues get the offscreen screenshot looked at first and recorded with `--human-check` |
 
 - `sent_back` → dispatch round R+1 to the remote with the verifier's reason; `exhausted`/`escalated` → a human.
 - The verifier has exec + a writable tmp and **no network**; the issue reaches it as a sha256-pinned
