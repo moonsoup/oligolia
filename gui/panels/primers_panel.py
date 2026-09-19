@@ -16,7 +16,10 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QColor
 
-from backend.routers.primers import design_primers, restriction_sites, PrimerDesignRequest, RestrictionRequest
+from backend.routers.primers import (
+    design_primers, restriction_sites, PrimerDesignRequest, RestrictionRequest,
+    describe_tm_conditions, describe_pair_tm,
+)
 from ..workers import Worker, worker_busy
 
 # Presets stored in user config dir
@@ -124,6 +127,15 @@ class PrimersPanel(QWidget):
         self._pcr_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self._pcr_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         pcr_layout.addWidget(self._pcr_table)
+
+        # A Tm is not a property of a sequence alone — the same primer reads 53.7
+        # degC in this buffer and 64.0 degC in a PCR-like one. The table used to
+        # show the number and say nothing about what it assumes (#79.4, #81).
+        # Wording comes from the backend so it cannot drift from the number above it.
+        self._pcr_tm_note = QLabel(describe_tm_conditions())
+        self._pcr_tm_note.setObjectName("subheading")
+        self._pcr_tm_note.setWordWrap(True)
+        pcr_layout.addWidget(self._pcr_tm_note)
         tabs.addTab(pcr_widget, "PCR Primers")
 
         # ── Restriction Enzymes ───────────────────────────────────────────────
@@ -331,6 +343,11 @@ class PrimersPanel(QWidget):
     def _on_pcr_done(self, pairs: list) -> None:
         self._pcr_progress.hide()
         self._pcr_status.setText(f"{len(pairs)} primer pair{'s' if len(pairs) != 1 else ''} found.")
+        # Say what these rows' Tm column assumes, taken from the pairs themselves
+        # rather than from the defaults, so the caption stays true if the request
+        # ever asks for a different buffer (#81).
+        if pairs:
+            self._pcr_tm_note.setText(describe_pair_tm(pairs[0]))
         self._pcr_table.setRowCount(len(pairs))
         for i, pair in enumerate(pairs):
             fwd, rev = pair.forward, pair.reverse

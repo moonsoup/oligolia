@@ -1,6 +1,8 @@
 """PCR primer design and restriction enzyme analysis."""
 
+import math
 import re
+from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from Bio import Restriction
@@ -8,6 +10,30 @@ from Bio.Seq import Seq
 from Bio.SeqUtils import MeltingTemp
 
 router = APIRouter(prefix="/primers", tags=["primers"])
+
+
+#: Conditions the reported Tm is computed under. Spelled out because a melting
+#: temperature is not a property of a sequence alone: Tm_NN takes a
+#: nearest-neighbour table, both strand concentrations, four salt species and a
+#: choice of salt correction, and "Tm" without them does not identify a number.
+#: These are Biopython's documented defaults, which is what the #50 audit compared
+#: against. Changing any of them changes every Tm the app reports, so change them
+#: here, visibly, and update backend/tests/test_oracle_tm.py in the same commit.
+#:
+#: Since #81 a caller may ASK for a different buffer per request, but these remain
+#: the defaults, unchanged: whether they are the right defaults for a PCR tool is
+#: #79's open scientific question and is deliberately not settled here.
+TM_CONDITIONS = {
+    "nn_table": MeltingTemp.DNA_NN3,  # Allawi & SantaLucia 1997 ("unified")
+    "saltcorr": 5,                    # Owczarzy et al. 2004
+    "dnac1": 25,                      # nM, primer strand
+    "dnac2": 25,                      # nM, template strand
+    "Na": 50,                         # mM
+    "K": 0,
+    "Tris": 0,
+    "Mg": 0,
+    "dNTPs": 0,
+}
 
 
 class PrimerDesignRequest(BaseModel):
@@ -22,6 +48,25 @@ class PrimerDesignRequest(BaseModel):
     gc_max: float = 70.0
     max_pairs: int = Field(default=5, ge=1, le=20)
 
+    # --- how to compute Tm (#81) ---------------------------------------------
+    # "nn" is nearest-neighbour thermodynamics via Tm_NN (what the app reports and
+    # what #50 established it must report). "wallace" is the 1989 length-and-GC-count
+    # rule, kept since #50 and now actually selectable — #50 called it "an option"
+    # while nothing could reach it, which is what #79.2 objected to.
+    tm_method: Literal["nn", "wallace"] = "nn"
+
+    # The buffer the Tm is computed in. Defaults are EXACTLY TM_CONDITIONS, so a
+    # request that sets none of these is byte-for-byte the pre-#81 request.
+    # ge=0 rather than gt=0: zero is a legitimate concentration (the defaults have
+    # four of them), but a negative one is not a buffer, so it is a 422.
+    na_mm: float = Field(default=TM_CONDITIONS["Na"], ge=0)
+    k_mm: float = Field(default=TM_CONDITIONS["K"], ge=0)
+    tris_mm: float = Field(default=TM_CONDITIONS["Tris"], ge=0)
+    mg_mm: float = Field(default=TM_CONDITIONS["Mg"], ge=0)
+    dntp_mm: float = Field(default=TM_CONDITIONS["dNTPs"], ge=0)
+    primer_nm: float = Field(default=TM_CONDITIONS["dnac1"], ge=0)
+    template_nm: float = Field(default=TM_CONDITIONS["dnac2"], ge=0)
+
 
 class Primer(BaseModel):
     sequence: str
@@ -32,11 +77,36 @@ class Primer(BaseModel):
     direction: str  # forward | reverse
 
 
+class TmConditions(BaseModel):
+    """The buffer a reported Tm was computed in (#81).
+
+    Carried on every pair because a Tm without its conditions does not identify a
+    number — the same primer reads 53.7 degC in the default bench buffer and 64.0
+    degC in a PCR-like one (#79). A caller that never asks for a buffer still gets
+    this, so a reported Tm is never again silently conditioned.
+    """
+    na_mm: float
+    k_mm: float
+    tris_mm: float
+    mg_mm: float
+    dntp_mm: float
+    primer_nm: float
+    template_nm: float
+    # Only meaningful for the nearest-neighbour method; None under the Wallace
+    # rule, which is a function of length and GC count and sees no buffer at all.
+    nn_table: str | None = None
+    salt_correction: int | None = None
+
+
 class PrimerPair(BaseModel):
     forward: Primer
     reverse: Primer
     product_size: int
     penalty: float
+    # Additive (#81): the response stays a JSON list of pairs, so every existing
+    # caller — the GUI, workflow/engine.py, the QA corpus — is unaffected.
+    tm_method: str = "nn"
+    tm_conditions: TmConditions | None = None
 
 
 class RestrictionSite(BaseModel):
@@ -44,26 +114,6 @@ class RestrictionSite(BaseModel):
     cut_pattern: str
     positions: list[int]
     count: int
-
-
-#: Conditions the reported Tm is computed under. Spelled out because a melting
-#: temperature is not a property of a sequence alone: Tm_NN takes a
-#: nearest-neighbour table, both strand concentrations, four salt species and a
-#: choice of salt correction, and "Tm" without them does not identify a number.
-#: These are Biopython's documented defaults, which is what the #50 audit compared
-#: against. Changing any of them changes every Tm the app reports, so change them
-#: here, visibly, and update backend/tests/test_oracle_tm.py in the same commit.
-TM_CONDITIONS = {
-    "nn_table": MeltingTemp.DNA_NN3,  # Allawi & SantaLucia 1997 ("unified")
-    "saltcorr": 5,                    # Owczarzy et al. 2004
-    "dnac1": 25,                      # nM, primer strand
-    "dnac2": 25,                      # nM, template strand
-    "Na": 50,                         # mM
-    "K": 0,
-    "Tris": 0,
-    "Mg": 0,
-    "dNTPs": 0,
-}
 
 
 def _tm_wallace(seq: str) -> float:
@@ -87,20 +137,149 @@ def _tm_wallace(seq: str) -> float:
     return 64.9 + 41 * (gc - 16.4) / (at + gc)
 
 
-def _tm_nearest_neighbor(seq: str) -> float:
+def _tm_nearest_neighbor(seq: str, conditions: dict | None = None) -> float:
     """Nearest-neighbour melting temperature, as the name says.
 
-    Delegates to Biopython's `Tm_NN` under the pinned `TM_CONDITIONS`. An
-    independent audit of the previous Wallace-rule implementation found 97 of 120
-    primers from real templates more than 3 degC out, worst case +9.0 degC, and
-    systematically worse on GC-rich sequence — which is where an annealing
-    temperature set from this number does real damage (#50).
+    Delegates to Biopython's `Tm_NN`. An independent audit of the previous
+    Wallace-rule implementation found 97 of 120 primers from real templates more
+    than 3 degC out, worst case +9.0 degC, and systematically worse on GC-rich
+    sequence — which is where an annealing temperature set from this number does
+    real damage (#50).
+
+    `conditions` is a Tm_NN keyword dict; omitting it uses the pinned
+    `TM_CONDITIONS`, so every existing caller keeps its exact previous behaviour
+    (#81 adds the argument rather than changing the default).
     """
     seq = seq.upper()
     if len(seq) < 2:
         # Tm_NN needs at least one neighbour pair; nothing thermodynamic to say.
         return _tm_wallace(seq)
-    return round(MeltingTemp.Tm_NN(seq, **TM_CONDITIONS), 2)
+    return round(MeltingTemp.Tm_NN(seq, **(TM_CONDITIONS if conditions is None else conditions)), 2)
+
+
+def _effective_monovalent_mm(conditions: dict) -> float:
+    """The total monovalent-equivalent ion concentration Tm_NN's saltcorr will see.
+
+    Mirrors `Bio.SeqUtils.MeltingTemp.salt_correction`: monovalents add directly,
+    Tris counts half (only half of it is the cation), and free Mg2+ — magnesium
+    not chelated by dNTPs — enters as a von Ahsen (2001) sodium equivalent. If the
+    whole thing is zero, corrections 1-6 raise rather than return a number.
+    """
+    mon = conditions["Na"] + conditions["K"] + conditions["Tris"] / 2.0
+    mg, dntps = conditions["Mg"], conditions["dNTPs"]
+    if sum((conditions["K"], mg, conditions["Tris"], dntps)) > 0 and dntps < mg:
+        mon += 120 * math.sqrt(mg - dntps)
+    return mon
+
+
+def _validate_tm_conditions(conditions: dict) -> None:
+    """Refuse buffers Tm_NN cannot evaluate, with a 4xx rather than a 500 (#81).
+
+    Both of these are `ValueError` out of Biopython — one raised deliberately, one
+    a bare `math domain error` — and both surface as an unexplained 500 if they
+    reach the endpoint. They are properties of the requested buffer, so they are
+    the caller's to fix and belong in the 4xx range.
+    """
+    if _effective_monovalent_mm(conditions) <= 0:
+        raise HTTPException(400, (
+            "No monovalent salt and no free Mg²⁺: the salt correction takes the "
+            "logarithm of the total ion concentration, which is zero here. Give a "
+            "non-zero na_mm, k_mm or tris_mm, or mg_mm greater than dntp_mm."
+        ))
+    if conditions["dnac1"] - conditions["dnac2"] / 2.0 <= 0:
+        raise HTTPException(400, (
+            f"primer_nm ({conditions['dnac1']}) must be greater than half of "
+            f"template_nm ({conditions['dnac2']}): the nearest-neighbour "
+            "concentration term takes the logarithm of primer − template/2."
+        ))
+
+
+def _tm_conditions_for(req: "PrimerDesignRequest") -> dict:
+    """Tm_NN keywords for this request — the pinned table and correction, its buffer."""
+    return {
+        "nn_table": TM_CONDITIONS["nn_table"],
+        "saltcorr": TM_CONDITIONS["saltcorr"],
+        "dnac1": req.primer_nm,
+        "dnac2": req.template_nm,
+        "Na": req.na_mm,
+        "K": req.k_mm,
+        "Tris": req.tris_mm,
+        "Mg": req.mg_mm,
+        "dNTPs": req.dntp_mm,
+    }
+
+
+def _nn_table_name(table: dict) -> str:
+    """Biopython's nearest-neighbour tables are plain dicts, so ask it their name.
+
+    Reported rather than assumed: "Tm 58.8 degC" means nothing without saying which
+    of the four literature parameter sets produced it.
+    """
+    for name in ("DNA_NN1", "DNA_NN2", "DNA_NN3", "DNA_NN4", "RNA_NN1",
+                 "RNA_NN2", "RNA_NN3", "R_DNA_NN1"):
+        if getattr(MeltingTemp, name, None) is table:
+            return name
+    return "unknown"
+
+
+def _reported_conditions(conditions: dict, method: str) -> TmConditions:
+    """The buffer, as it goes back to the caller on every pair."""
+    return TmConditions(
+        na_mm=conditions["Na"],
+        k_mm=conditions["K"],
+        tris_mm=conditions["Tris"],
+        mg_mm=conditions["Mg"],
+        dntp_mm=conditions["dNTPs"],
+        primer_nm=conditions["dnac1"],
+        template_nm=conditions["dnac2"],
+        # The Wallace rule cannot see a nearest-neighbour table or a salt
+        # correction, so claiming one would be a false report.
+        nn_table=_nn_table_name(conditions["nn_table"]) if method == "nn" else None,
+        salt_correction=conditions["saltcorr"] if method == "nn" else None,
+    )
+
+
+#: Human-readable names for the pinned table and salt correction, for the one
+#: place a user sees them: the GUI's Tm column caption (#81, #79.4).
+TM_TABLE_NAME = "DNA_NN3 (Allawi & SantaLucia 1997)"
+TM_SALTCORR_NAME = "Owczarzy et al. 2004"
+
+
+def describe_tm_conditions(conditions: dict | None = None, method: str = "nn") -> str:
+    """One line naming the Tm method and the buffer it assumes.
+
+    The primers panel shows a Tm column; before #81 it said nothing about what
+    that number assumes, which is exactly the complaint in #79.4. Derived from
+    `TM_CONDITIONS` rather than retyped, so the caption cannot drift away from the
+    number beside it.
+    """
+    c = TM_CONDITIONS if conditions is None else conditions
+    buffer = (
+        f"Na⁺ {c['Na']:g} mM, K⁺ {c['K']:g} mM, Tris {c['Tris']:g} mM, "
+        f"Mg²⁺ {c['Mg']:g} mM, dNTPs {c['dNTPs']:g} mM, "
+        f"primer {c['dnac1']:g} nM, template {c['dnac2']:g} nM"
+    )
+    if method == "wallace":
+        return ("Tm: Wallace rule (length and GC count only) — ignores the buffer; "
+                f"the reaction is assumed to be {buffer}.")
+    return (f"Tm: nearest-neighbour, {TM_TABLE_NAME}, salt correction "
+            f"{TM_SALTCORR_NAME}, at {buffer}.")
+
+
+def describe_pair_tm(pair: "PrimerPair") -> str:
+    """The same line, for a pair that has already been designed.
+
+    Lets a table caption report what its rows were ACTUALLY computed under rather
+    than what the defaults happen to be.
+    """
+    c = pair.tm_conditions
+    if c is None:
+        return describe_tm_conditions(method=pair.tm_method)
+    return describe_tm_conditions({
+        "Na": c.na_mm, "K": c.k_mm, "Tris": c.tris_mm,
+        "Mg": c.mg_mm, "dNTPs": c.dntp_mm,
+        "dnac1": c.primer_nm, "dnac2": c.template_nm,
+    }, method=pair.tm_method)
 
 
 def _gc(seq: str) -> float:
@@ -230,6 +409,22 @@ def design_primers(req: PrimerDesignRequest) -> list[PrimerPair]:
     if len(template) < req.product_min + req.primer_len_min * 2:
         raise HTTPException(400, "Template too short for requested product size")
 
+    # The requested buffer, checked before any Tm is computed (#81). Validated
+    # whichever method was asked for, so a refusal is a property of the buffer and
+    # not of the method: the conditions go back on every pair either way, and a
+    # buffer we could not report a Tm under is not one to echo back as if it were
+    # fine.
+    conditions = _tm_conditions_for(req)
+    _validate_tm_conditions(conditions)
+    reported_conditions = _reported_conditions(conditions, req.tm_method)
+
+    if req.tm_method == "wallace":
+        def _tm(seq: str) -> float:
+            return _tm_wallace(seq)
+    else:
+        def _tm(seq: str) -> float:
+            return _tm_nearest_neighbor(seq, conditions)
+
     fwd_candidates: list[Primer] = []
     rev_candidates: list[Primer] = []
 
@@ -246,7 +441,7 @@ def design_primers(req: PrimerDesignRequest) -> list[PrimerPair]:
                 continue
             if not _acceptable_primer(seq):
                 continue
-            tm = _tm_nearest_neighbor(seq)
+            tm = _tm(seq)
             if not (req.tm_min <= tm <= req.tm_max):
                 continue
             fwd_candidates.append(Primer(
@@ -263,7 +458,7 @@ def design_primers(req: PrimerDesignRequest) -> list[PrimerPair]:
             # 3'-GC-clamp and homopolymer checks entirely (#62.2).
             if not _acceptable_primer(rc_seq):
                 continue
-            tm = _tm_nearest_neighbor(rc_seq)
+            tm = _tm(rc_seq)
             if not (req.tm_min <= tm <= req.tm_max):
                 continue
             rev_candidates.append(Primer(
@@ -342,7 +537,8 @@ def design_primers(req: PrimerDesignRequest) -> list[PrimerPair]:
                 limit = min(5.0, -best[0][0])
 
     pairs = [
-        PrimerPair(forward=f, reverse=r, product_size=prod, penalty=round(-neg, 3))
+        PrimerPair(forward=f, reverse=r, product_size=prod, penalty=round(-neg, 3),
+                   tm_method=req.tm_method, tm_conditions=reported_conditions)
         for neg, _n, f, r, prod in sorted(best, key=lambda e: (-e[0], e[1]))
     ]
     return pairs
