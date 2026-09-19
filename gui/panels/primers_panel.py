@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QComboBox, QInputDialog, QCheckBox, QSizePolicy,
 )
 from PyQt6.QtGui import QColor
+from fastapi import HTTPException
 
 from backend.routers.primers import (
     design_primers, restriction_sites, PrimerDesignRequest, RestrictionRequest,
@@ -461,6 +462,12 @@ class PrimersPanel(QWidget):
                     if i % 2 == 0:
                         item.setBackground(QColor("#1a2030"))
                     self._dig_table.setItem(i, col, item)
+        except HTTPException as e:
+            # The router's own refusal — an unknown enzyme, or a paste that is
+            # not a nucleotide sequence (#87). Show its message, not
+            # HTTPException's "400: …" stringification.
+            self._dig_table.setRowCount(0)
+            self._dig_status.setText(f"Error: {e.detail}")
         except Exception as e:
             self._dig_status.setText(f"Error: {e}")
 
@@ -480,6 +487,12 @@ class PrimersPanel(QWidget):
                     if s.count >= 2:
                         item.setBackground(QColor("#1e3a2e"))
                     self._re_table.setItem(i, col, item)
+        except HTTPException as e:
+            # Same refusal the Digest tab gets for the same box, said the same
+            # way, and with the table left empty rather than filled with
+            # offsets into a FASTA header (#87).
+            self._re_table.setRowCount(0)
+            self._re_status.setText(f"Error: {e.detail}")
         except Exception as e:
             self._re_status.setText(f"Error: {e}")
 

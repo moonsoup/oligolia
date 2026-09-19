@@ -9,7 +9,7 @@ from Bio import Restriction
 from Bio.Seq import Seq
 from Bio.SeqUtils import MeltingTemp
 
-from backend.sequence_text import normalize_template
+from backend.sequence_text import normalize_template, validate_template
 
 router = APIRouter(prefix="/primers", tags=["primers"])
 
@@ -597,8 +597,10 @@ def restriction_sites(req: RestrictionRequest) -> list[RestrictionSite]:
     template, enzymes = req.template, req.enzymes
     """Find restriction enzyme cut sites in a sequence."""
     # Normalised before any index is computed, so the positions reported here
-    # are in the same coordinate space as /primers/digest's cuts (#86).
-    template = normalize_template(template)  # noqa: F841 (reassigned from req)
+    # are in the same coordinate space as /primers/digest's cuts (#86) — and
+    # refused outright if what is left is not a sequence, rather than reporting
+    # offsets into a FASTA header as if they were base positions (#87).
+    template = validate_template(template)  # noqa: F841 (reassigned from req)
     target_enzymes = {k: v for k, v in RESTRICTION_ENZYMES.items()
                       if not enzymes or k in enzymes}
     results = []
@@ -669,8 +671,10 @@ class DigestResult(BaseModel):
 def digest(req: DigestRequest) -> DigestResult:
     """Simulate restriction digest — cut template at all sites for the given enzymes."""
     # Normalised the way Bio.Restriction normalises internally, so the string
-    # sliced below is the string its cut positions index into (#86).
-    template = normalize_template(req.template)
+    # sliced below is the string its cut positions index into (#86), and checked
+    # against the alphabet it accepts, so a leftover FASTA header is a 400 here
+    # instead of an unhandled TypeError out of enz.search() below (#87).
+    template = validate_template(req.template)
     if not template:
         raise HTTPException(400, "Template sequence is required")
     unknown = [e for e in req.enzymes if e not in RESTRICTION_ENZYMES]
