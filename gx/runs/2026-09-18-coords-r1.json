@@ -1,0 +1,199 @@
+{
+  "block": "gx-test-design",
+  "contract": "oligolia-gx-tests",
+  "round": 1,
+  "capability": "sequence-record coordinate fidelity (GenBank/EMBL load → edit → export, with feature locations)",
+  "commit": "4bb77b3f1647c177debccb854af1b4160b358722",
+  "corpus": "gx/corpus/MANIFEST.json",
+  "register": "gx/coords/register.json",
+  "tests": "gx/coords/tests.json",
+  "run_summary": "42 failed, 158 passed in 1.68s",
+  "failures": [
+    {
+      "test": "gx/coords/test_coords_export.py::test_co_5_partial_boundaries_survive_export[AF071878.1.gb-2-gene, AF071878.1.gb-3-CDS, AF071878.1.gb-6-gene, AF071878.1.gb-7-CDS, NC_001699.1.gb-21-exon]",
+      "requirement": "CO-5",
+      "expected": "a location the file writes as `<108..1007` or `complement(1240..>1974)` or `complement(<2603..4426)` comes back out of the app still partial — the exported location parses to a Bio.SeqFeature.BeforePosition / AfterPosition, as INSDC requires for a feature that 'starts before the first sequenced base'",
+      "actual": "every one exports as an exact location: `<108..1007` -> `108..1007`, `complement(1240..>1974)` -> `complement(1240..1974)`, `complement(<2603..4426)` -> `complement(2603..4426)`. backend/formats/genbank.py:32-37 reads `int(feat.location.start)` / `int(p.start)` into the Annotation model and :95 rebuilds `FeatureLocation(a, b, strand=strand_val)`, so the position class — the only thing carrying the partiality — is gone by the time the value is stored.",
+      "your_adjudication": "subject-defect",
+      "why": "The exported record makes a claim the original explicitly declined to make. AF071878.1's CDS is annotated `<108..1007` precisely because the coding sequence runs off the sequenced fragment; re-saving it as `108..1007` asserts base 108 is the A of the start codon. Downstream tools read that difference: a `<` CDS is exempt from the start-codon and multiple-of-three checks an exact one must pass. The loss is also invisible to any test that compares coordinates, because BeforePosition subclasses int and `BeforePosition(5) == ExactPosition(5)` is True (gx/corpus/biopython-1.85/Bio/SeqFeature.py:2209ff) — which is likely why it survived #57's round-trip work. Five of the eight non-source features in AF071878.1 are affected, i.e. this fires on the first real partial record a user opens."
+    },
+    {
+      "test": "gx/coords/test_coords_export.py::test_co_5_exported_location_string_still_carries_the_angle_bracket[5 parametrisations]",
+      "requirement": "CO-5",
+      "expected": "the literal '<' or '>' is still present in the exported FEATURES line",
+      "actual": "`complement(<2603..4426)` -> `'complement(2603..4426)'`; likewise for the four AF071878.1 cases",
+      "your_adjudication": "subject-defect",
+      "why": "Recorded separately from the position-class check because it is the file-level statement of the same loss: the bytes the user saves no longer contain the character. No coordinate convention is in play — the export simply does not round-trip the input."
+    },
+    {
+      "test": "gx/coords/test_coords_export.py::test_co_6_order_is_not_rewritten_as_join",
+      "requirement": "CO-6",
+      "expected": "`order(11..20,51..60)` exports as an `order(...)`; the INSDC Feature Table gives the two operators different meanings — join says the elements 'should be joined (placed end-to-end) to form one contiguous sequence', order says only that they 'can be found in the specified order ... but nothing is implied about the reasonableness about joining them'",
+      "actual": "exported as `join(11..20,51..60)`",
+      "your_adjudication": "subject-defect",
+      "why": "backend/formats/genbank.py:96 always builds `CompoundLocation(locs)`, whose operator defaults to 'join'; `location.operator` is read nowhere on the way in. The record comes back asserting the parts splice together, which is the thing `order` exists to avoid saying. Lower reach than CO-5 — `order()` is rare, and no record in the pinned corpus uses it, so the probe is a minimal record built over real AF071878.1 bases — but the companion control in the same record (`join(101..110,141..150)` still exports as `join`) passes, so the failure isolates cleanly to the dropped operator rather than to compound handling in general."
+    },
+    {
+      "test": "gx/coords/test_coords_export.py::test_co_7_remote_reference_is_not_silently_localised",
+      "requirement": "CO-7",
+      "expected": "`join(201..210,J00194.1:100..202)` either keeps the accession or the feature is rejected — INSDC: `J00194.1:100..202` 'points to bases 100 to 202, inclusive, in the entry ... with primary accession number J00194'",
+      "actual": "exported as `join(201..210,100..202)`",
+      "your_adjudication": "subject-defect",
+      "why": "This is the worst-behaved of the three export losses because it does not merely drop information, it reassigns it: `int(p.start)` at backend/formats/genbank.py:37 takes the remote part's numbers and the writer re-emits them as local, so bases 100..202 of *this* record are now claimed as part of the feature. Nothing in the output marks the substitution. Biopython does set `part.ref` on the parsed location, so the information is available at the point it is thrown away. Rarity acknowledged: remote references are uncommon in the records this app targets, so severity is low, but the failure mode is silent corruption rather than a visible gap."
+    },
+    {
+      "test": "gx/coords/test_coords_edit_shift.py::test_co_10_a_wholly_deleted_feature_is_reported_not_kept_empty[exact_delete_of_repeat_region_5074..5090, exact_delete_of_intron_493..521, exact_delete_of_rep_origin_1..12]",
+      "requirement": "CO-10",
+      "expected": "deleting exactly a feature's own bases leaves the feature nothing to describe, so it comes back in shift_annotations' `dropped` list and the user is told it went — the behaviour the function's own docstring promises for 'a feature whose bases were themselves edited'",
+      "actual": "`dropped` is empty for the target feature in all three cases; the feature is kept with parts [(5073, 5073)], [(492, 492)] and [(0, 0)] respectively",
+      "your_adjudication": "subject-defect",
+      "why": "backend/services/annotations.py:74-76 tests `p_start <= start and p_end >= end` — 'contains the edit' — before it can reach the overlap branch, and a delete whose range equals the feature's range satisfies it exactly. The branch then keeps the start and moves the end, which for an exact delete collapses the interval to zero length. The feature is neither adjusted (there is nothing left to adjust) nor reported, which is precisely the 'silently wrong' outcome the function was written for #59 to prevent. A user deleting a highlighted feature — the obvious way to remove one — hits this on the first try."
+    },
+    {
+      "test": "gx/coords/test_coords_edit_shift.py::test_co_10_no_zero_length_between_position_is_exported[exact_delete_of_repeat_region_5074..5090, exact_delete_of_intron_493..521, exact_delete_of_rep_origin_1..12]",
+      "requirement": "CO-10",
+      "expected": "no exported location is `5073^5074`, `492^493` or `0^1`",
+      "actual": "the saved GenBank contains `repeat_region   5073^5074`, `intron   492^493` and `rep_origin   0^1` respectively",
+      "your_adjudication": "subject-defect",
+      "why": "The file-level consequence of the previous entry, and the reason it matters beyond an in-memory oddity. INSDC's `n^n+1` means 'a site between bases n and n+1' — a legitimate location type used for things like insertion points, so a reader will accept it without complaint and render a former 99-base repeat as a zero-width tick. The record now asserts something the original never said."
+    },
+    {
+      "test": "gx/coords/test_coords_edit_shift.py::test_co_10_no_exported_location_names_base_zero",
+      "requirement": "CO-10",
+      "expected": "no exported location contains the token 0 — a GenBank location counts from 1, so there is no base 0",
+      "actual": "deleting NC_001699.1's first 12 bases exports `rep_origin   0^1` and `rep_origin   join(5106..5118,0^1)`",
+      "your_adjudication": "subject-defect",
+      "why": "Worth its own entry because it is a plain malformed-file bug, independent of whether one thinks a zero-length feature should be kept: `0^1` names a base that cannot exist in a 1-based file. It arises from the same collapse at the left edge of the record, and it lands in the origin-spanning `join(5118..5130,1..12)` too, so a circular plasmid trimmed at its origin exports a join with an invalid part. Biopython's own writer produced the string without objection, so nothing downstream of the app will catch it either."
+    },
+    {
+      "test": "gx/coords/test_coords_edit_shift.py::test_co_11_a_cds_whose_bases_changed_does_not_keep_a_stale_translation",
+      "requirement": "CO-11",
+      "expected": "after deleting one base inside `CDS 526..1560`, either the CDS is reported as lost, or the CDS that is kept declares a /translation equal to its own bases translated (table 1)",
+      "actual": "the CDS is kept as `526..1559`, is absent from `dropped`, and still declares the pre-edit 344-residue protein; the bases now encode a different one from the frameshift onward",
+      "your_adjudication": "subject-defect",
+      "why": "shift_annotations treats a feature that contains the edit as merely growing or shrinking ('those bases are still its bases', backend/services/annotations.py:74-76). That is right for coordinates and wrong for everything the feature also asserts: the /translation qualifier is a recorded claim about exactly those bases, and it is carried across unchanged. The exported record is internally inconsistent in a way GenBank validators flag, and the GUI reports the edit as clean — nothing appears in the '… annotation(s) removed' message (gui/panels/sequence_panel.py:951-959) because the list is empty. This is the direct continuation of #59: features now move, but a feature whose own bases were edited is still left saying something false."
+    },
+    {
+      "test": "gx/coords/test_coords_edit_shift.py::test_co_11_the_shortened_cds_is_not_left_out_of_frame",
+      "requirement": "CO-11",
+      "expected": "a kept, non-partial CDS spans a whole number of codons",
+      "actual": "1034 bases (1035 before the one-base deletion), not a multiple of three; Biopython emits 'Partial codon, len(sequence) not a multiple of three' when asked to translate it",
+      "your_adjudication": "subject-defect",
+      "why": "A second, convention-free angle on the same defect: whatever one thinks the right policy is for a frameshifted CDS, a complete CDS that is not a multiple of three is not a valid annotation. The test guards that the feature is neither partial nor originally short, so the only thing that made it invalid is the edit."
+    },
+    {
+      "test": "gx/coords/test_coords_edit_shift.py::test_co_11_a_same_length_replace_inside_a_cds_is_not_silent",
+      "requirement": "CO-11",
+      "expected": "replacing [1700, 1710) inside `CDS 1469..2533` with ten bases either drops the CDS or restates its /translation",
+      "actual": "the CDS is kept at `1469..2533` with every coordinate unchanged (delta is 0) and the original /translation; the bases now encode …FESDSPNRDMLPCYSVARIPLPN… where the record still claims …FESDSPNRDMQKKNSVARIPLPN…",
+      "your_adjudication": "subject-defect",
+      "why": "The clearest case in this group, because there is no coordinate arithmetic to argue about: nothing moved, and the record is still wrong. It also shows the defect is not specific to frameshifts — an equal-length replacement inside a feature is the ordinary way a user applies a point mutation or a codon swap, and the app will export the edited plasmid still advertising the unmutated protein."
+    },
+    {
+      "test": "gx/coords/test_coords_reverse_complement.py::test_co_12_every_feature_still_extracts_the_same_string",
+      "requirement": "CO-12",
+      "expected": "reverse-complementing the record does not change which bases a feature is made of or the order it reads them in, so every one of NC_001699.1's 28 features extracts the same string as before",
+      "actual": "2 of 28 differ — the two compound features. The spliced CDS comes back reading its second exon first; the origin-spanning rep_origin returns `GCCTCGGCCTCCGGAGGCGGAGGCG` where the record says `GGAGGCGGAGGCGGCCTCGGCCTCC` (the same 25 bases, with the two parts swapped).",
+      "your_adjudication": "subject-defect",
+      "why": "backend/services/annotations.py:104-105 maps each part `[s, e)` to `[L-e, L-s)` and then calls `parts.reverse()`. The map is right; the reverse is not. A CompoundLocation's parts are already in the feature's own 5'-to-3' order — Biopython's writer states the convention outright ('we expect the CompoundLocation and its parts to all be marked as strand == -1, and to be in the order 19:100 then 0:10', gx/corpus/biopython-1.85/Bio/SeqIO/InsdcIO.py:334-339) — and the reflection preserves that order, so reversing it undoes it. Every single-part feature is unaffected, which is why 26 of 28 pass and why the bug survived: it only shows on a record with a join, and only under Reverse Complement."
+    },
+    {
+      "test": "gx/coords/test_coords_reverse_complement.py::test_co_12_matches_biopythons_own_reverse_complement",
+      "requirement": "CO-12",
+      "expected": "the flipped feature set equals the one Bio.SeqRecord.reverse_complement(features=True) produces from the same bytes: CDS -> [(117, 360), (704, 2528)] on +, rep_origin -> [(0, 13), (5118, 5130)] on -",
+      "actual": "CDS -> [(704, 2528), (117, 360)]; rep_origin -> [(5118, 5130), (0, 13)] — each part list reversed relative to the authority",
+      "your_adjudication": "subject-defect",
+      "why": "The decisive entry for CO-12: the oracle is Biopython doing the very same operation on the very same record, so there is no room for a disagreement about convention. The intervals match exactly; only the order differs, and only for the two compound features."
+    },
+    {
+      "test": "gx/coords/test_coords_reverse_complement.py::test_co_12_compound_parts_stay_in_reading_order[20-CDS, 1-rep_origin]",
+      "requirement": "CO-12",
+      "expected": "CDS parts [(117, 360), (704, 2528)] strand +; rep_origin parts [(0, 13), (5118, 5130)] strand -",
+      "actual": "[(704, 2528), (117, 360)] and [(5118, 5130), (0, 13)]",
+      "your_adjudication": "subject-defect",
+      "why": "The same finding stated as coordinates rather than as extracted bases, so the diagnosis does not depend on the extraction helper. The strands are correct in both cases; only the part order is wrong."
+    },
+    {
+      "test": "gx/coords/test_coords_reverse_complement.py::test_co_12_compound_exports_with_its_exons_in_the_right_order[20-CDS, 1-rep_origin]",
+      "requirement": "CO-12",
+      "expected": "the saved file says `join(118..360,705..2528)` and `complement(join(5119..5130,1..13))`",
+      "actual": "`join(705..2528,118..360)` and `complement(join(1..13,5119..5130))`",
+      "your_adjudication": "subject-defect",
+      "why": "The file-level form, and the one a user would eventually notice: `join(705..2528,118..360)` is a descending join on the plus strand of a record, which is only meaningful for a feature crossing the origin — this one does not cross it, so the location is both wrong and misleading about why."
+    },
+    {
+      "test": "gx/coords/test_coords_reverse_complement.py::test_co_12_spliced_cds_still_starts_at_its_start_codon",
+      "requirement": "CO-12",
+      "expected": "the flipped CDS extracts 2067 bases beginning ATGGACAAAGTGCTGAATAGGGAGGAATCCATGGAGCTTATGGATTTATTAGGCCTTGAT",
+      "actual": "2067 bases beginning GTGCCAACCTATGGAACAGATGAATGGGAATCCTGGTGGAATACATTTAATGAGAAGTGG — the second exon, so the CDS no longer starts at its start codon",
+      "your_adjudication": "subject-defect",
+      "why": "The concrete consequence, spelled out for the record: NC_001699.1's large T antigen CDS, reverse-complemented, no longer begins with ATG. The length is unchanged and every base is still inside the feature, so nothing about the record looks suspicious; the protein it encodes is simply a different one."
+    },
+    {
+      "test": "gx/coords/test_coords_reverse_complement.py::test_co_12_origin_spanning_feature_keeps_its_bases",
+      "requirement": "CO-12",
+      "expected": "GGAGGCGGAGGCGGCCTCGGCCTCC",
+      "actual": "GCCTCGGCCTCCGGAGGCGGAGGCG",
+      "your_adjudication": "subject-defect",
+      "why": "Same root cause on the origin-spanning `join(5118..5130,1..12)`, recorded separately because it shows the defect is not confined to spliced CDSs: any feature written as a join is affected, including the plasmid-origin features the Sequence tab's plasmid map draws."
+    },
+    {
+      "test": "gx/coords/test_coords_reverse_complement.py::test_co_12_the_same_holds_after_export_and_re_read",
+      "requirement": "CO-12",
+      "expected": "re-reading the exported record with Bio.SeqIO gives every feature the same bases it had before the flip",
+      "actual": "the same 2 features differ",
+      "your_adjudication": "subject-defect",
+      "why": "Confirms the error reaches the saved file rather than being an in-memory bookkeeping detail the writer happens to correct."
+    },
+    {
+      "test": "gx/coords/test_coords_gui_edit.py::test_co_12_reverse_complement_through_the_panel_keeps_every_feature_s_bases",
+      "requirement": "CO-12",
+      "expected": "loading NC_001699.1 into the real SequencePanel, pressing Apply with Reverse Complement selected, and saving as GenBank gives 28 features that all read their original bases",
+      "actual": "2 features read different bases: rep_origin `join{[5118:5130](-), [0:13](-)}` and CDS `join{[704:2528](+), [117:360](+)}`",
+      "your_adjudication": "subject-defect",
+      "why": "Included to close the loop from the arithmetic to the shipped product: this is the widget the user clicks (gui/panels/sequence_panel.py:_apply_op -> _commit_edit(flip=True)) and the save path the File menu uses (gui/main_window.py:210 -> write_genbank), driven headlessly end to end. The companion test confirming the feature table still lists all 28 rows passes, so the app gives the user no signal at all that anything changed."
+    },
+    {
+      "test": "gx/coords/test_coords_edit_endpoint.py::test_co_14_the_stored_record_keeps_its_annotations[insert, delete, replace, reverse_complement]",
+      "requirement": "CO-14",
+      "expected": "the record POST /sequences/{id}/edit stores under the new id carries the source record's features, shifted for the edit",
+      "actual": "0 of 28 features for every operation — `Sequence(id='NC_001699.1_insert', …, annotations=[], …)`",
+      "your_adjudication": "subject-defect",
+      "why": "backend/routers/sequences.py:137-145 constructs the stored Sequence from scratch with id, name, description, seq and molecule_type and nothing else, so `annotations` falls back to its empty default. This is #59's original bug, unfixed on the HTTP side: the GUI path was given shift_annotations, the router path was not. It matters because the stored record is what GET /sequences/{id} returns and what POST /files/download/genbank writes, so the API's edit-then-export is a documented way to strip a GenBank file of its annotations. Four operations, four identical results, including reverse_complement — the one case where the GUI does have flip_annotations."
+    },
+    {
+      "test": "gx/coords/test_coords_edit_endpoint.py::test_co_14_the_stored_record_keeps_its_topology[insert, delete, replace, reverse_complement]",
+      "requirement": "CO-14",
+      "expected": "editing a circular plasmid stores a circular plasmid",
+      "actual": "`is_circular=False` for all four operations; NC_001699.1 is a circular genome",
+      "your_adjudication": "subject-defect",
+      "why": "The same constructor omits `is_circular`, so the field defaults to False. Topology is not cosmetic here — the repo's own restriction/digest work keys off it (an origin-spanning cut only exists on a circular molecule), and the Sequence tab's topology toggle is documented as 'preserved across edits and GenBank export' (gui/panels/sequence_panel.py:466). One insert through the API silently linearises the plasmid."
+    },
+    {
+      "test": "gx/coords/test_coords_edit_endpoint.py::test_co_14_surviving_annotations_point_at_the_right_bases",
+      "requirement": "CO-14",
+      "expected": "whatever features survive an insert still extract bases the original record contained",
+      "actual": "none survive, so there is nothing to check — the test fails on that",
+      "your_adjudication": "subject-defect",
+      "why": "Recorded because it is the test that would catch the *next* bug: once the endpoint carries annotations, this one asks whether it shifts them. Today it only re-states the loss. The control test in the same file passes — the bases the endpoint returns are correct for all four operations — so the failures here are about the record, not the splice."
+    },
+    {
+      "test": "gx/coords/test_coords_edit_endpoint.py::test_co_14_a_downloaded_genbank_of_the_edited_record_still_has_features",
+      "requirement": "CO-14",
+      "expected": "write_genbank of the stored, edited record produces a non-empty FEATURES block",
+      "actual": "the FEATURES block is empty",
+      "your_adjudication": "subject-defect",
+      "why": "The end of the chain: the file a user downloads after editing through the API is a bare sequence with a LOCUS line. Upload an annotated plasmid, insert one base, download it, and every annotation is gone with no error and no warning."
+    }
+  ],
+  "notes": [
+    "Filename follows the contract's literal instruction (gx/runs/2026-09-18-coords-r1.json); the round was actually designed and run on 2026-09-19 against commit 4bb77b3.",
+    "Requirements that HELD: CO-1 (1-based inclusive -> 0-based half-open on load, all 28 NC_001699.1 features), CO-2 (the coordinate round trip is the identity for both real records — every interval, part order, strand and extracted subsequence), CO-3 (join() parts survive load and export, including the origin-spanning join(5118..5130,1..12) and join(1975..1993,1..19) on circular records, with topology preserved), CO-4 (complement and complement(join) keep their strand and part order on load and export), CO-8 (an edit elsewhere leaves an untouched feature's bases byte-identical, for all four pinned edits), CO-9 (downstream parts shift by exactly delta, upstream parts do not move, re-derived by index), CO-13 (NCBI's GenBank and EBI's EMBL of AF071878.1 load to the same molecule). #57's join work and #59's shift work both hold up under the real records.",
+    "The seven defects cluster into three groups. (1) Export drops information the location string carried but the integer intervals do not: partial boundaries (CO-5), the order operator (CO-6), remote references (CO-7). All three come from backend/formats/genbank.py flattening a Bio location to (int, int) pairs on the way in and rebuilding a plain FeatureLocation on the way out. (2) shift_annotations' 'contains the edit' branch is too generous: it swallows an exact-span delete into a zero-length feature (CO-10) and keeps a feature whose own bases were rewritten without touching its qualifiers (CO-11). (3) flip_annotations reverses a part list that was already in reading order (CO-12), and the HTTP edit endpoint never carries annotations or topology at all (CO-14).",
+    "CO-12 is the one I would rank first. It is silent, it hits a routine one-click operation, the record that comes out is well-formed and plausible, and the consequence is a CDS that no longer starts at its start codon. It is also the clearest: the oracle is Bio.SeqRecord.reverse_complement(features=True) run on the same bytes, which agrees with the app on every interval and every strand and disagrees only on the order of the two compound part lists. A flip-flip round-trip test cannot see it — reversing twice restores the list whether or not reversing was correct — which is worth noting for whoever writes the regression test.",
+    "CO-14 is the widest: it is #59 left unfixed on the API side, and it removes every annotation rather than misplacing one.",
+    "Corrections made to my own tests before the seal, both caught by running: (a) my first reverse-complement oracle expected extract(flipped) == revcomp(extract(original)), which is wrong — SeqFeature.extract already returns the feature's own sense, so the right expectation is that the extract is unchanged; the initial version reported 28 of 28 'failures', i.e. it was measuring my error, not the app's. (b) CO-6's companion_control parameter in the register held a prose sentence rather than a bare location, so the probe record's third feature was unparseable and the control test failed for a fixture reason; the register now separates the location from its note.",
+    "Not covered this round, for the next one: origin-spanning contiguity under an edit at the origin itself (inserting at position 0 of a circular record splits an origin-crossing feature into two parts with the new bases between them — the extract is unchanged, so CO-8 passes, but the feature is no longer contiguous across the origin, and I could not settle whether that is wrong without a clearer statement of what the app promises for circular edits); the `complement` (not reverse-complement) operation, which leaves annotations and their strands untouched while complementing the bases; and the feature table's Start/End columns, which display raw 0-based half-open values under unqualified headers next to a GenBank file that counts from 1.",
+    "Corpus additions are byte-for-byte as fetched, each pinned with sha256 in gx/corpus/MANIFEST.json: Biopython 1.85's SeqFeature.py, SeqIO/InsdcIO.py and GenBank/__init__.py from the interpreter backend/.venv exposes; the INSDC Feature Table Definition from ftp.ebi.ac.uk; NC_001699.1 and AF071878.1 from NCBI E-utilities; AF071878.1 in EMBL form from the ENA browser API. NC_001699.1 was chosen by scanning twelve small circular genomes for a feature whose parts wrap the origin — it carries the origin-spanning join, a spliced complement(join(...)) and a partial boundary in one 5130 bp record. The existing puc19_L09137.2.txt entry and every other manifest entry are untouched, as are gx/conftest.py, gx/register.json, gx/tests.json and the five sealed gx/test_restriction_*.py files."
+  ]
+}
