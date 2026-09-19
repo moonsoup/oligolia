@@ -1,0 +1,150 @@
+{
+  "block": "gx-test-design",
+  "contract": "oligolia-gx-tests",
+  "round": 1,
+  "capability": "translation and ORF finding",
+  "commit": "8424c4df1e770b7faea1267556c95a89447759c8",
+  "corpus": "gx/corpus/MANIFEST.json",
+  "register": "gx/orf/register.json",
+  "tests": "gx/orf/tests.json",
+  "run_summary": "17 failed, 54 passed in 30.90s",
+  "failures": [
+    {
+      "test": "gx/orf/test_orf_input.py::test_or_10_rna_input_finds_the_same_orfs_as_its_dna_spelling[puc19]",
+      "requirement": "OR-10",
+      "expected": "pUC19 spelled as RNA (every T written U) denotes the same 2686-base molecule as pUC19 spelled as DNA, so find_orfs must report the same 13 ORFs at the same coordinates — or refuse the input.",
+      "actual": "ORFFindResult(sequence_length=2686, min_length_aa=30, orfs=[], total_found=0). No error, no warning, HTTP 200-equivalent.",
+      "your_adjudication": "subject-defect",
+      "why": "find_orfs (backend/routers/analysis.py:497) upper-cases and strips whitespace but never converts U to T, and its GENETIC_CODE (:382) is keyed on DNA codons only. So AUG is not in start_codons, every codon misses the dict and scores 'X', and the finder walks all six frames of a real transcript finding nothing. The app models RNA as a first-class molecule type — MoleculeType.RNA, and /sequences/{id}/edit 'transcribe' produces one — and Biopython registers every table over both alphabets (unambiguous_rna_by_id). An empty result is neither an answer nor a refusal: a user who transcribes a sequence in the app and then asks for its ORFs is told the transcript has none."
+    },
+    {
+      "test": "gx/orf/test_orf_input.py::test_or_10_rna_input_finds_the_same_orfs_as_its_dna_spelling[NG_007400.1]",
+      "requirement": "OR-10",
+      "expected": "NG_007400.1 (human COL1A1 RefSeqGene, 24,544 bp) as RNA reports the same 171 ORFs as the DNA spelling",
+      "actual": "total_found=0",
+      "your_adjudication": "subject-defect",
+      "why": "Same root cause at real scale; recorded separately because it shows the failure is not a short-sequence artefact. 171 ORFs over a full-length human gene become zero on a one-character-per-base rewrite that changes no molecule."
+    },
+    {
+      "test": "gx/orf/test_orf_input.py::test_or_11_crlf_wrapped_sequence_denotes_the_same_molecule",
+      "requirement": "OR-11",
+      "expected": "NG_007400.1 wrapped at 60 columns with CRLF line endings is the same 24,544-base molecule: sequence_length 24544 and the same 171 ORFs at the same coordinates. backend/sequence_text.normalize_template, the app's own definition of what layout is, maps the wrapped text onto the bare sequence exactly.",
+      "actual": "sequence_length 24953 — the 409 carriage returns are still in the template — and 182 ORFs at shifted coordinates. One of them is protein 'MGDSLVPPGLHLAXCLLPHPCPLELGTLTI': the X is a codon with a CR in it.",
+      "your_adjudication": "subject-defect",
+      "why": "find_orfs strips only ' ' and '\\n' (backend/routers/analysis.py:499). backend/sequence_text.py exists precisely to stop this — its own docstring says 'every endpoint and GUI call site that analyses the same template box has to agree on which characters are the molecule and which are layout' — and the restriction endpoints already use it after #86. find_orfs was not migrated. This is the same defect class as #86 in a second endpoint, not a duplicate of it: different router, different function, and it produces something #86 did not, namely proteins containing X residues that stand for carriage returns. sequence_length 24953 is the length of no molecule."
+    },
+    {
+      "test": "gx/orf/test_orf_circular.py::test_or_12_rotating_the_origin_does_not_lose_the_bla_gene[1700]",
+      "requirement": "OR-12",
+      "expected": "pUC19 is a 2686 bp circular plasmid; its bla gene is a complete 286-residue ORF at top-strand [1625:2486) in frame -3. Read from base 1700 — a rotation, i.e. the same molecule — the 286-residue ORF is still there.",
+      "actual": "no 286-residue ORF; the longest is 262 aa. Rotations 2000 and 2400 lose it too, reporting 162 aa and 221 aa as their longest.",
+      "your_adjudication": "subject-defect",
+      "why": "find_orfs takes no topology argument (backend/routers/analysis.py:497) and walks each frame linearly from index 0 to the end, so an ORF crossing the origin is truncated at the break. The app knows about topology everywhere else — Sequence.is_circular, carried through every edit operation (#96), and the restriction digest reports circular fragments — so a circular molecule is a thing the app represents and then cannot analyse. pUC19 is the plasmid the app itself ships as a fixture, and bla is its selectable marker: the single most-looked-for gene on it disappears depending on where the record happens to start. Severity note: the endpoint's signature gives a caller no way to declare circularity, so this is a missing capability rather than a miscalculation — but the observable behaviour is that one molecule has two different gene contents."
+    },
+    {
+      "test": "gx/orf/test_orf_circular.py::test_or_12_rotating_the_origin_does_not_lose_the_bla_gene[2000]",
+      "requirement": "OR-12",
+      "expected": "286-residue bla ORF present when pUC19 is read from base 2000",
+      "actual": "absent; longest ORF 162 aa",
+      "your_adjudication": "subject-defect",
+      "why": "Same root cause. Recorded per rotation because the size of the loss varies with where the origin falls inside the gene — 162, 221 and 262 aa for offsets 2000, 2400 and 1700 — which is what makes the result look plausible rather than obviously broken."
+    },
+    {
+      "test": "gx/orf/test_orf_circular.py::test_or_12_rotating_the_origin_does_not_lose_the_bla_gene[2400]",
+      "requirement": "OR-12",
+      "expected": "286-residue bla ORF present when pUC19 is read from base 2400",
+      "actual": "absent; longest ORF 221 aa",
+      "your_adjudication": "subject-defect",
+      "why": "Same root cause."
+    },
+    {
+      "test": "gx/orf/test_orf_circular.py::test_or_12_the_orf_set_is_rotation_invariant[1700]",
+      "requirement": "OR-12",
+      "expected": "the multiset of reported protein strings is identical for pUC19 and for pUC19 rotated by 1700 bases",
+      "actual": "1 ORF lost (the 286-residue bla protein, MSIQHFRVALIPFFAAFCLPVFAHPETLVKVKDAEDQLGARVGYIELDLNSGKILESFRPEERFPMM…), 1 gained (a 262-residue truncation of it)",
+      "your_adjudication": "subject-defect",
+      "why": "The convention-free form of the same finding: no coordinate system is involved, only the question of which proteins the molecule encodes. The ORF that appears in its place is a fragment of the one that vanished, which is the shape a user is least likely to notice."
+    },
+    {
+      "test": "gx/orf/test_orf_circular.py::test_or_12_the_orf_set_is_rotation_invariant[2000]",
+      "requirement": "OR-12",
+      "expected": "rotation-invariant protein multiset at offset 2000",
+      "actual": "2 ORFs lost (longest 286 aa), 3 gained (longest 162 aa)",
+      "your_adjudication": "subject-defect",
+      "why": "Same root cause; at this offset the origin also falls inside a second gene, so the count changes in both directions."
+    },
+    {
+      "test": "gx/orf/test_orf_circular.py::test_or_12_the_orf_set_is_rotation_invariant[2400]",
+      "requirement": "OR-12",
+      "expected": "rotation-invariant protein multiset at offset 2400",
+      "actual": "1 ORF lost (longest 286 aa), 1 gained (longest 221 aa)",
+      "your_adjudication": "subject-defect",
+      "why": "Same root cause."
+    },
+    {
+      "test": "gx/orf/test_orf_genetic_code.py::test_or_6_include_all_starts_uses_the_tables_start_codons",
+      "requirement": "OR-6",
+      "expected": "include_all_starts=True means 'every start codon of the genetic code in force'. gc.prt's sncbieaa for table 1 marks exactly three codons M: ATG, CTG and TTG. NG_007400.1 contains 190 CTG-initiated ORFs of >=30 aa, and every reported ORF must open on one of those three codons.",
+      "actual": "0 of the 190 CTG-initiated ORFs reported; 128 ORFs reported opening on GTG, which gc.prt does not mark as a table-1 start. The whole reported set (333 ORFs) differs from the authority-derived set (379).",
+      "your_adjudication": "subject-defect",
+      "why": "backend/routers/analysis.py:503 hard-codes start_codons = {'ATG','GTG','TTG'}. That set is not any NCBI table: table 1 is {ATG, CTG, TTG}; {ATG, GTG, TTG} would be a subset of table 11 or table 2's start sets, neither of which this function can be asked for. So the flag's answer is wrong under the only code the function implements, in both directions at once — it misses a start codon the table declares and invents one it does not. The effect is not a rounding error: choosing a different opening codon moves where an ORF begins, so 214 reported intervals differ from the authority's and 168 are spurious. GENETIC_CODE's 64 amino-acid assignments are themselves correct (OR-1 passes); it is only the start set that was written from memory rather than from the table."
+    },
+    {
+      "test": "gx/orf/test_orf_partial.py::test_or_9_re_extracting_an_orf_does_not_raise_partial_codon[ND4]",
+      "requirement": "OR-9",
+      "expected": "slicing any reported ORF back out of the input and translating it with Bio.Seq.translate raises no BiopythonWarning — a reported interval is a whole number of codons",
+      "actual": "frame -3, [0:233), length_nt=233, length_aa=77, untranslated tail 'AT'. 233 is not a multiple of three; Bio.Seq.translate warns 'Partial codon, len(sequence) not a multiple of three.'",
+      "your_adjudication": "subject-defect",
+      "why": "The run-off branch at backend/routers/analysis.py:552-558 sets abs_end = len(strand_seq) on the plus strand and abs_start = 0 on the minus strand — the end of the molecule, not the end of the last translated codon. The 1-2 bases past it are inside the reported interval and outside the reported protein, so length_nt (233) and 3 x length_aa (231) disagree, and any consumer that slices the interval gets a ragged string. The app has consumers that do exactly that: gui/panels/primers_panel.py stores digest fragments for the Assembly tab and backend/workflow/engine.py feeds interval output into workflow steps. The input is real — MT-ND4's own 1378 coding bases from the pinned rCRS, a span NCBI itself marks /transl_except=(pos:12137,aa:TERM) because the stop codon is completed post-transcriptionally."
+    },
+    {
+      "test": "gx/orf/test_orf_partial.py::test_or_9_re_extracting_an_orf_does_not_raise_partial_codon[CYTB]",
+      "requirement": "OR-9",
+      "expected": "same, over MT-CYTB's 1141 coding bases",
+      "actual": "frame -3, [0:158), length_nt=158, length_aa=52, untranslated tail 'AT'",
+      "your_adjudication": "subject-defect",
+      "why": "Same root cause on the second of the rCRS's six post-transcriptionally completed CDS features. Recorded separately because it confirms the arithmetic is systematic rather than an artefact of one span length."
+    },
+    {
+      "test": "gx/orf/test_orf_partial.py::test_or_9_an_unterminated_orf_is_distinguishable_from_a_complete_one[ND4]",
+      "requirement": "OR-9",
+      "expected": "an ORF that reaches the end of the molecule without a stop codon is flagged as partial in the result; a consumer must not have to re-derive the bases to learn that the reported protein is unterminated",
+      "actual": "the ORF model's fields are ['end','frame','length_aa','length_nt','protein','start','start_codon'] — no partial/truncated/complete/has_stop field. The run-off ORF is reported under exactly the same shape as a terminated one.",
+      "your_adjudication": "subject-defect",
+      "why": "backend/routers/analysis.py:110-117. The source comment at :551 says 'Report open ORF that reaches end of sequence (no stop codon — partial CDS)', so the author knew the distinction mattered and then did not put it in the model. A partial CDS and a complete one are different biological claims: the first says 'this reading frame continues past the end of what you gave me', the second says 'this is a whole protein'. The only way to tell them apart from the response is arithmetic on length_nt against a stop-inclusive convention that is documented nowhere — and per the finding above, the bases in the reported interval do not even match that arithmetic."
+    },
+    {
+      "test": "gx/orf/test_orf_partial.py::test_or_9_an_unterminated_orf_is_distinguishable_from_a_complete_one[CYTB]",
+      "requirement": "OR-9",
+      "expected": "same, over MT-CYTB's coding bases",
+      "actual": "same: 1 run-off ORF, no field on the model saying so",
+      "your_adjudication": "subject-defect",
+      "why": "Same root cause."
+    },
+    {
+      "test": "gx/orf/test_orf_alt_code.py::test_or_13_nd5_is_one_orf_under_table_2",
+      "requirement": "OR-13",
+      "expected": "the ORF finder can be asked for the genetic code the record declares. NC_012920.1 puts /transl_table=2 on all 13 of its CDS features; MT-ND5 is one continuous 603-residue reading frame under table 2 (NCBI's own /translation is 603 residues).",
+      "actual": "find_orfs(sequence: str, min_length_aa: int = 30, include_all_starts: bool = False) — no genetic-code argument exists. Under the hard-coded table 1, MT-ND5's 604 codons are misread at 34 positions, 11 of them TGA read as stop instead of tryptophan, and the longest ORF found over the gene's own bases is 128 aa.",
+      "your_adjudication": "subject-defect",
+      "why": "GENETIC_CODE (backend/routers/analysis.py:382) is a module-level table-1 dict with no alternative and no parameter reaching it. The app is not uniformly table-1-only: backend/services/annotations.restated_translation reads /transl_table off a feature and honours every NCBI table, and the app's own GenBank reader parses those qualifiers, so a user can load NC_012920.1, see its mitochondrial code declared, and then get a table-1 answer from the ORF tool with nothing saying which code was used. The result is not a near miss — a 603-residue gene is reported as a 128-residue fragment, and the same applies to all 13 mitochondrial genes and to every bacterial, plastid, yeast or ciliate record. 'Mitochondrial DNA' is not an exotic input for a gene-editing desktop app."
+    },
+    {
+      "test": "gx/orf/test_orf_alt_code.py::test_or_14_restated_translation_reproduces_ncbis_protein[ND2]",
+      "requirement": "OR-14",
+      "expected": "MNPLAQPVIYSTIFAGTLIT… — NCBI's own /translation for MT-ND2, a recorded literal in the pinned record",
+      "actual": "INPLAQPVIYSTIFAGTLIT… — the remaining 346 residues agree exactly; only residue 1 differs",
+      "your_adjudication": "subject-defect",
+      "why": "MT-ND2 opens on ATT. gc.prt's sncbieaa for table 2 marks ATT as a START codon (M), and NCBI therefore writes the initiator M even though ATT codes for isoleucine mid-chain. backend/services/annotations.py:92 calls Seq(coding).translate(table=table, to_stop=True) without cds=True and without rewriting the initiator, so it renders the literal amino acid. The consequence is not cosmetic: restated_translation exists to restate a /translation qualifier after an edit (#95), so editing a mitochondrial record anywhere — even in a region that does not touch MT-ND2 — silently rewrites that feature's stored protein from M to I. The record then round-trips out of the app disagreeing with NCBI's, at the one residue every downstream tool checks first. The other 12 CDS features match byte for byte, including the minus-strand MT-ND6 and all six post-transcriptionally completed spans, which is what isolates this to the initiator rule rather than to the table or the coordinates."
+    },
+    {
+      "test": "gx/orf/test_orf_translate_op.py::test_or_15_a_ragged_input_is_refused_or_reported",
+      "requirement": "OR-15",
+      "expected": "POST /sequences/{id}/edit operation='translate' on 17 bases either refuses the input or says in its result that a partial trailing codon was dropped",
+      "actual": "result_seq 'MTCGC' (5 residues, correct), message 'Translated 17 nt → 5 aa', and BiopythonWarning('Partial codon, len(sequence) not a multiple of three. Explicitly trim the sequence or add trailing N before translation. This may become an error in future.') raised to the warnings stream. The message never mentions that 2 bases ('AT') were discarded.",
+      "your_adjudication": "subject-defect",
+      "why": "This is the answer to the round's standing question about where the backend suite's 'Partial codon' warning comes from and whether the app handles it: it comes from backend/routers/sequences.py:119, the app passes it straight through, and the single emitter in the suite is backend/tests/test_sequences.py::test_translate_brca2 — a test that feeds a real BRCA2 partial CDS whose length is not a multiple of three and asserts only on the N-terminus, so the warning has been visible in CI output the whole time without anything failing. Oligolia is a desktop app: a Python warning goes to a stream no user reads, and the message they do read states an arithmetic impossibility (17 nt → 5 aa, 5 residues being 15 bases). The app already knows the right shape of this — backend/services/annotations.py:76 documents trimming before translating, 'which is what Bio.Seq.translate does with it anyway, minus the warning' — so one of the two translate paths handles it and the user-facing one does not. gui/panels/sequence_panel.py:1077 duplicates the untrimmed call, so the GUI inherits it rather than going through the router."
+    }
+  ],
+  "notes": "Environment: same as the restriction and coords rounds — backend/.venv is `python3 -m venv --system-site-packages --without-pip` over the system interpreter (python3.11-venv/ensurepip is absent in this container), which carries Biopython 1.85, FastAPI 0.115.6 and pytest 8.3.4. Run with `PYTHONPATH=. backend/.venv/bin/python -m pytest gx/orf/ -q -p no:cacheprovider`. No network. `ruff check gx/orf/` is clean. `make check` is unaffected: gx/ is outside backend/tests/ and gui/, and `make lint` covers backend/ gui/ oligolia.py .claude/qa/ only.\n\nCorpus: three sources appended, each licence-checked before vendoring. ncbi/gc.prt is NCBI-produced data and therefore a U.S. Government work in the public domain. biopython-1.85/Bio/Data/CodonTable.py is under the Biopython License Agreement / BSD 3-Clause, already vendored in this corpus with its LICENSE.rst. inputs/NC_012920.1.gb is a RefSeq record, public domain. Nothing is marked 'unverified' this round — every requirement rests on a redistributable pinned source. gx/corpus/MANIFEST.json was appended to only: the three new entries are added at the end and no existing entry's bytes changed (an earlier draft of this round had re-serialised the whole file and escaped the em-dashes in four existing entries; that was reverted and the additions spliced in as text).\n\nScope: the commit was rebased onto origin/main 9ef1e34 (the crispr round sealed mid-round); the suite was re-run after the rebase with the identical 17-failed/54-passed result, and that is the run recorded here. Nothing under backend/ or gui/ was modified, and gx/seal.json, gx/coords/ and gx/crispr/ are untouched — `git diff HEAD~1 -- backend/ gui/ gx/seal.json gx/coords/ gx/crispr/` is empty. Shared helpers are in gx/orf/orf_oracle.py and imported by that name; gx/orf/conftest.py holds fixtures only, so this round does not need its own process.\n\nOracle soundness was established before any subject assertion: test_or_1_the_two_authorities_agree_before_either_is_used re-renders Biopython's tables 1, 2 and 11 back into gc.prt's own ncbieaa/sncbieaa strings and requires an exact match, so neither copy of the authority is trusted alone. Two failures in the first run were mistakes in my own tests, both fixed before the seal: the rCRS spells its genes ND1/COX1/CYTB rather than MT-ND1/MT-CO1/MT-CYB, and my table-1-vs-table-2 test had assumed MT-CYTB's first swing codon was a stop when it is an ATA (I->M), so to_stop truncation happens later than I wrote.\n\nWhat passed, and so is now evidence rather than assumption. The linear six-frame core is correct and independently confirmed: over all five pinned full-length records (pUC19 2686 bp, NC_001699.1 5130 bp, AF071878.1 1993 bp, NG_007400.1 24,544 bp, NC_012920.1 16,569 bp) at min_length_aa 30 and 100, the subject's ORF set is EXACTLY equal — frame, start, end, length_aa and protein — to a second ORF finder written from gc.prt's definition and never from the subject (OR-7, 10 parametrisations). Every reported ORF re-extracts by index with a start codon at its 5' end, a table-1 stop at its 3' end and no interior stop (OR-5); every minus-strand ORF's reported top-strand interval reverse-complements to bases beginning with its reported start_codon and translating to its reported protein, and the coordinate mapping round-trips (OR-4); every ORF is a segment of Bio.Seq.translate's rendering of its own frame's substring at the residue offset its coordinates imply, not merely a protein of the right length (OR-3); and GENETIC_CODE is NCBI table 1 at all 64 codons with stops at exactly TAA/TAG/TGA (OR-1). restated_translation reproduces NCBI's own protein byte for byte for 12 of the 13 rCRS CDS features, including the minus-strand MT-ND6 and all six spans that are not a multiple of three, raising no warning (OR-14) — that function is the strongest code in this capability, and the contrast with find_orfs is the round's main structural finding: the app has two translation paths, one that reads the record's declared genetic code and handles ragged ends properly, and one that is hard-coded to table 1 and does neither.\n\nFor the orchestrator: test function names carry their OR-<n> requirement id, so a failing node id names its requirement directly; gx/orf/tests.json maps each gx-or-<n> id to its file and the requirements it covers. The three requirements whose failures are missing-capability rather than miscalculation — OR-12 (no topology argument), OR-13 (no genetic-code argument) and OR-9's second test (no partial field on the model) — assert against an absent parameter or field and will therefore keep failing until the subject grows one; if a verifier judges that out of bounds for a round-1 seal, each still has a sibling test that fails on observable output alone (OR-12's rotation-invariance test compares protein multisets with no coordinates involved, OR-13's premise is NCBI's own 603-residue literal, and OR-9's first test fails on Biopython's warning over a re-extracted interval). Nothing in this round monkeypatches or mutates subject module state."
+}
