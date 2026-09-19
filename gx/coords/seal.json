@@ -1,0 +1,92 @@
+{
+  "algo": "sha256",
+  "entries": [
+    {
+      "file": "gx/coords/test_coords_edit_endpoint.py",
+      "digest": "cb0bcfa76a7005c21a4fb696cd28a9c020a3a6c2a651b74f2635a999feaa3ef5"
+    },
+    {
+      "file": "gx/coords/test_coords_edit_shift.py",
+      "digest": "a2200c3428739ecad5ad8276e3b4687b5ad2f7709803c163e1527d8460452d8a"
+    },
+    {
+      "file": "gx/coords/test_coords_embl_genbank.py",
+      "digest": "536db7422c06853605a52100d570004f0784644d576aa3053ddbdba85fd7c685"
+    },
+    {
+      "file": "gx/coords/test_coords_export.py",
+      "digest": "838b05add7a20f278bc91341f0565033acda3a81668d2ee8153ecfb9e26ac685"
+    },
+    {
+      "file": "gx/coords/test_coords_gui_edit.py",
+      "digest": "0f53480a3ee6977687542d8a454551641a67c43225e6f661bcaddc2a15cff510"
+    },
+    {
+      "file": "gx/coords/test_coords_load.py",
+      "digest": "7e54f59c09843592c05d4d64abce42c5d8250d59e753c305d3bf23ddac02b7d3"
+    },
+    {
+      "file": "gx/coords/test_coords_reverse_complement.py",
+      "digest": "38d91c3e5ba7d7875f871cea94de7d8cd3d888edd0d9b372dda4b354c3f2b7ff"
+    }
+  ],
+  "digest": "2ef985275ccf556d2f29023f030d029fabb0a5e5d723ad3c33591a33765987f9",
+  "support": [
+    {
+      "file": "gx/conftest.py",
+      "digest": "a097f944f61364bade5e7a11425e697b6959c8d50d05c8b50456b7bce59c0568"
+    },
+    {
+      "file": "gx/coords/conftest.py",
+      "digest": "bcc5b29c27648cd738110c8ec2f51c110a1aed156ac925b2d144aca9172ff0c5"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/Data/IUPACData.py",
+      "digest": "897fb42f1bd6e3f837be6918ae6c54e77e61013b284cbabd4e7dfc01723e1a91"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/GenBank/__init__.py",
+      "digest": "789ff8cd3c44d9332c691c9a52dc7d211287ab323f9e94a6a01b181e66aa1417"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/Restriction/Restriction.py",
+      "digest": "356353b184c8b8df5fc71346c2b6d5e2aa1c124521c604e2779e5013c80424e0"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/Restriction/Restriction_Dictionary.py",
+      "digest": "2a79099295dbad6061ea67a11e053787c591fcb2eb10fc8c0f89ead908dfa02b"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/SeqFeature.py",
+      "digest": "9bdb8d0386de1848092e8c7901e80b0955074ff0cafc7e89c4e41ae4d07b7d56"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/Bio/SeqIO/InsdcIO.py",
+      "digest": "2c12bd14c507928e931b17bcd5ece6a44175479aa17e9efd7b1fec40d8b770a9"
+    },
+    {
+      "file": "gx/corpus/biopython-1.85/LICENSE.rst",
+      "digest": "d4bbb0c4e5345e6f2508c3b93fb247fcb2db95783fb8a584c23cd88e3c03df6c"
+    },
+    {
+      "file": "gx/corpus/inputs/AF071878.1.embl",
+      "digest": "f5ac73da443961c295cccb3a4575b60dfb1188679e6598ad5ab44538f30a8c2c"
+    },
+    {
+      "file": "gx/corpus/inputs/AF071878.1.gb",
+      "digest": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f"
+    },
+    {
+      "file": "gx/corpus/inputs/NC_001699.1.gb",
+      "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+    },
+    {
+      "file": "gx/corpus/inputs/puc19_L09137.2.txt",
+      "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+    },
+    {
+      "file": "gx/corpus/insdc/FT_current.txt",
+      "digest": "14ea7e30324fa7bcb50b108bce45cf80de2eb37075d06be3f36ffaf9f7245444"
+    }
+  ]
+}
