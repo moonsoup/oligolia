@@ -83,6 +83,55 @@
       "source": "Pinned TEST INPUT, not an oracle: the SAME INSDC record AF071878.1 as served by ENA in EMBL flat-file format, fetched once from https://www.ebi.ac.uk/ena/browser/api/embl/AF071878?lineLimit=0 and saved byte-for-byte. Independent of the GenBank copy — it is EBI's own serialisation, not something this repo generated — so the two files together test that the subject's EMBL and GenBank readers describe one molecule identically. Note the two archives differ in content by design: ENA does not carry the `gene` features NCBI adds, so agreement is asserted over the feature keys both files contain.",
       "license": "ENA data is distributed under the EMBL-EBI terms of use (CC BY 4.0, https://www.ebi.ac.uk/about/terms-of-use/); the underlying INSDC record is public domain.",
       "retrieved": "2026-09-19"
+    },
+    {
+      "path": "crispr/crisporEffScores-v3.1.py",
+      "sha256": "2b6b589db6e3ef4a2433b3a93e657f2e61235f0ad593aa3007a3cb14e46c12e0",
+      "source": "CRISPOR, tag v3.1, fetched once from https://raw.githubusercontent.com/maximilianh/crisporWebsite/v3.1/crisporEffScores.py and saved byte-for-byte. THE pinned definition of the on-target score this app names: `doenchParams` (the 70 singleton + dinucleotide weights of Doench et al. 2014 Nat Biotechnol Rule Set 1, PMID 25184501) and `calcDoenchScores`, which states the model's input contract in one line -- \"Input is a 30mer: 4bp 5', 20bp guide, 3bp PAM, 3bp 5'\" -- then applies intercept 0.59763615, the GC term (gcLow -0.2026259 / gcHigh -0.1665878, times abs(10-gcCount)) and the logistic 1/(1+exp(-score)). Verified identical to the same tables at the repository's master tip (both `doenchParams` and `hitScoreM` compare equal byte-for-byte), so the pinned v3.1 copy is not a stale variant.",
+      "license": "Disputed by the upstream author's own two licence files, so BOTH are pinned alongside it and neither is paraphrased here. The LICENSE.txt at the v3.1 tag (crispr/CRISPOR-v3.1-LICENSE.txt) is Creative Commons Attribution-NonCommercial 3.0 Unported. The LICENSE.txt at master (crispr/CRISPOR-master-LICENSE.txt) states retroactively: \"Up to and including version 3.1, the source code files crisporEffScores.py and crispor.py were licensed under GPLv3.\" v3.1 was pinned rather than master precisely because master's own terms restrict later versions to academic use. Both files are reference authority under gx/corpus/ only -- nothing in backend/ or gui/ imports them, and no gx test imports them as Python either: the numeric tables are re-typed into gx/crispr/crispr_oracle.py, which asserts each one against these pinned bytes at import time. A reviewer who objects to CC-BY-NC sitting in an MIT repository can delete both .py files; the oracle keeps working and only the byte-level pin is lost.",
+      "retrieved": "2026-09-19"
+    },
+    {
+      "path": "crispr/crispor-v3.1.py",
+      "sha256": "aaa4d8f362af255f76127e58b5838e8ee199db533b4a228448811cc45b5efa37",
+      "source": "CRISPOR, tag v3.1, fetched once from https://raw.githubusercontent.com/maximilianh/crisporWebsite/v3.1/crispor.py and saved byte-for-byte. Pinned definition of the off-target score this app names: `hitScoreM` (the 20 position-specific mismatch weights of Hsu et al. 2013 Nat Biotechnol, PMID 23873081 -- index 0 is protospacer position 1 at the PAM-distal 5' end, index 19 is position 20 in the PAM-proximal seed, weight 0.583), `calcHitScore` (\"see 'Scores of single hits' on http://crispr.mit.edu/about\", the three-term product score1*score2*score3*100 taken over the ACTUAL positions at which guide and candidate differ) and `calcMitGuideScore` (\"Sguide defined on http://crispr.mit.edu/about\", 100/(100+hitSum)). Also the pinned SpCas9 PAM convention: `pamDesc` line 91, ('NGG','NGG - Streptococcus Pyogenes'), and `DEFAULTPAM = 'NGG'`.",
+      "license": "Same disputed pair as crispr/crisporEffScores-v3.1.py -- see that entry; both licence texts are pinned beside it.",
+      "retrieved": "2026-09-19"
+    },
+    {
+      "path": "crispr/CRISPOR-v3.1-LICENSE.txt",
+      "sha256": "dfb1615c12f9dbca598734ffacaab4d4968d0c1b7fa64ae9cb7f72a0f8786d24",
+      "source": "https://raw.githubusercontent.com/maximilianh/crisporWebsite/v3.1/LICENSE.txt -- the licence text as it stood at the pinned tag. Included so the terms attached to the two pinned CRISPOR sources travel with them.",
+      "license": "Creative Commons Attribution-NonCommercial 3.0 Unported (this file is the licence text itself).",
+      "retrieved": "2026-09-19"
+    },
+    {
+      "path": "crispr/CRISPOR-master-LICENSE.txt",
+      "sha256": "7fa8299b7e0c9fef4c47985494b73596250ce5b8c949ced7d845f997f1243629",
+      "source": "https://raw.githubusercontent.com/maximilianh/crisporWebsite/master/LICENSE.txt -- the author's current terms, pinned because they contradict the v3.1-tag file above and are the more permissive of the two for exactly the version pinned here.",
+      "license": "Licence text itself; the terms it states for versions after 3.1 (academic-use-only, commercial licence via UCSC) are the reason master was NOT the version pinned.",
+      "retrieved": "2026-09-19"
+    },
+    {
+      "path": "biopython-1.85/Bio/Seq.py",
+      "sha256": "e96225e95b41df786a60501814ecafab89b74a07ec8eedc388001bdf45e80e3f",
+      "source": "Biopython 1.85, installed at /usr/local/lib/python3.11/dist-packages/Bio/Seq.py. The reverse-complement oracle: `Seq.reverse_complement` (line 1718) and the module-level `reverse_complement` (line 3021), used by gx/crispr to map every minus-strand guide index back onto the plus strand without reusing the subject's own `backend/routers/crispr._reverse_complement`.",
+      "license": "Biopython License Agreement / BSD 3-Clause (see biopython-1.85/LICENSE.rst)",
+      "retrieved": "2026-09-19"
+    },
+    {
+      "path": "biopython-1.85/Bio/SeqUtils/__init__.py",
+      "sha256": "bd6e3676fdbc01c88e19313f1babf65c96697019460f1e73e1d136392dcf7d6a",
+      "source": "Biopython 1.85, installed at /usr/local/lib/python3.11/dist-packages/Bio/SeqUtils/__init__.py. The GC oracle: `gc_fraction(seq, ambiguous='remove')` (line 53), used to recompute every reported gc_content independently of the subject's own `_gc_content`. Over the pure-ACGT guides the gx inputs yield, the `ambiguous` policy does not bite; it is named here so the comparison stays unambiguous if an N-bearing input is ever added.",
+      "license": "Biopython License Agreement / BSD 3-Clause (see biopython-1.85/LICENSE.rst)",
+      "retrieved": "2026-09-19"
+    },
+    {
+      "path": "inputs/NG_007400.1.gb",
+      "sha256": "4f39bbd3b9ff111dbd7d56aa4b0e077307203b4a962dc8c30e3304beb4ffb71c",
+      "source": "Pinned TEST INPUT, not an oracle: RefSeqGene NG_007400.1 (Homo sapiens collagen type I alpha 1 chain, COL1A1, LRG_1, chromosome 17; 24,544 bp, linear), fetched once from NCBI E-utilities efetch (db=nuccore, id=NG_007400.1, rettype=gbwithparts, retmode=text) and saved byte-for-byte. Added for this round because the capability under test is guide design at real scale and the corpus held nothing bigger than a 5 kb virus: one full-length human gene, nine times pUC19, yielding 5409 SpCas9 / 490 AsCas12a / 24523 LwaCas13a candidates. Alphabet is pure ACGT (no assembly gaps), so every index re-derivation over it is exact.",
+      "license": "GenBank/RefSeq record -- public domain (NCBI places GenBank records in the public domain; RefSeq records carry no copyright restrictions, https://www.ncbi.nlm.nih.gov/home/about/policies/).",
+      "retrieved": "2026-09-19"
     }
   ]
 }

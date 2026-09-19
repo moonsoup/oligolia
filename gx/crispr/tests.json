@@ -1,0 +1,151 @@
+[
+  {
+    "id": "gx-cr-1",
+    "file": "gx/crispr/test_crispr_sites.py",
+    "covers": [
+      "CR-1"
+    ]
+  },
+  {
+    "id": "gx-cr-2",
+    "file": "gx/crispr/test_crispr_sites.py",
+    "covers": [
+      "CR-2"
+    ]
+  },
+  {
+    "id": "gx-cr-3",
+    "file": "gx/crispr/test_crispr_sites.py",
+    "covers": [
+      "CR-3"
+    ]
+  },
+  {
+    "id": "gx-cr-4",
+    "file": "gx/crispr/test_crispr_sites.py",
+    "covers": [
+      "CR-4"
+    ]
+  },
+  {
+    "id": "gx-cr-5",
+    "file": "gx/crispr/test_crispr_sites.py",
+    "covers": [
+      "CR-5"
+    ]
+  },
+  {
+    "id": "gx-cr-6",
+    "file": "gx/crispr/test_crispr_sites.py",
+    "covers": [
+      "CR-5",
+      "CR-1"
+    ]
+  },
+  {
+    "id": "gx-cr-7",
+    "file": "gx/crispr/test_crispr_sites.py",
+    "covers": [
+      "CR-7"
+    ]
+  },
+  {
+    "id": "gx-cr-8",
+    "file": "gx/crispr/test_crispr_guide_length.py",
+    "covers": [
+      "CR-6"
+    ]
+  },
+  {
+    "id": "gx-cr-9",
+    "file": "gx/crispr/test_crispr_guide_length.py",
+    "covers": [
+      "CR-6"
+    ]
+  },
+  {
+    "id": "gx-cr-10",
+    "file": "gx/crispr/test_crispr_guide_length.py",
+    "covers": [
+      "CR-6",
+      "CR-1"
+    ]
+  },
+  {
+    "id": "gx-cr-11",
+    "file": "gx/crispr/test_crispr_on_target_score.py",
+    "covers": [
+      "CR-8"
+    ]
+  },
+  {
+    "id": "gx-cr-12",
+    "file": "gx/crispr/test_crispr_on_target_score.py",
+    "covers": [
+      "CR-8"
+    ]
+  },
+  {
+    "id": "gx-cr-13",
+    "file": "gx/crispr/test_crispr_on_target_score.py",
+    "covers": [
+      "CR-8"
+    ]
+  },
+  {
+    "id": "gx-cr-14",
+    "file": "gx/crispr/test_crispr_on_target_score.py",
+    "covers": [
+      "CR-9"
+    ]
+  },
+  {
+    "id": "gx-cr-15",
+    "file": "gx/crispr/test_crispr_on_target_score.py",
+    "covers": [
+      "CR-10"
+    ]
+  },
+  {
+    "id": "gx-cr-16",
+    "file": "gx/crispr/test_crispr_off_target.py",
+    "covers": [
+      "CR-11"
+    ]
+  },
+  {
+    "id": "gx-cr-17",
+    "file": "gx/crispr/test_crispr_off_target.py",
+    "covers": [
+      "CR-11"
+    ]
+  },
+  {
+    "id": "gx-cr-18",
+    "file": "gx/crispr/test_crispr_off_target.py",
+    "covers": [
+      "CR-12"
+    ]
+  },
+  {
+    "id": "gx-cr-19",
+    "file": "gx/crispr/test_crispr_input_contract.py",
+    "covers": [
+      "CR-13"
+    ]
+  },
+  {
+    "id": "gx-cr-20",
+    "file": "gx/crispr/test_crispr_input_contract.py",
+    "covers": [
+      "CR-13"
+    ]
+  },
+  {
+    "id": "gx-cr-21",
+    "file": "gx/crispr/test_crispr_input_contract.py",
+    "covers": [
+      "CR-14"
+    ]
+  }
+]

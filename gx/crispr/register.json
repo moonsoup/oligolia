@@ -1,0 +1,580 @@
+[
+  {
+    "id": "CR-1",
+    "statement": "For each pinned full-length input and each of the four Cas types the app offers, POST /crispr/design reports a total_candidates equal to the number of sites an independent both-strand regex scan of the same raw sequence finds under that nuclease's PAM grammar — the plus strand scanned directly and the minus strand scanned on Biopython's reverse complement, overlapping sites counted individually. The count is over the WHOLE input; no window of the molecule may be silently excluded.",
+    "numeric": true,
+    "parameters": {
+      "inputs": {
+        "puc19_L09137.2": 2686,
+        "NC_001699.1": 5130,
+        "AF071878.1": 1993,
+        "NG_007400.1": 24544
+      },
+      "guide_length": "each nuclease's canonical length, the caller passing none: SpCas9 20, SpCas9-HF1 20, AsCas12a 23, LwaCas13a 22",
+      "grammar": {
+        "SpCas9": "(protospacer 20 nt)(N)(GG), PAM 3'",
+        "SpCas9-HF1": "(protospacer 20 nt)(N)(GG), PAM 3'",
+        "AsCas12a": "(TTT)(A|C|G)(protospacer 23 nt), PAM 5'",
+        "LwaCas13a": "every 22 nt window of the given sense strand, no PAM, no second strand"
+      },
+      "expected_total_candidates": {
+        "puc19_L09137.2": {
+          "SpCas9": 326,
+          "SpCas9-HF1": 326,
+          "AsCas12a": 75,
+          "LwaCas13a": 2665
+        },
+        "NC_001699.1": {
+          "SpCas9": 541,
+          "SpCas9-HF1": 541,
+          "AsCas12a": 256,
+          "LwaCas13a": 5109
+        },
+        "AF071878.1": {
+          "SpCas9": 320,
+          "SpCas9-HF1": 320,
+          "AsCas12a": 62,
+          "LwaCas13a": 1972
+        },
+        "NG_007400.1": {
+          "SpCas9": 5409,
+          "SpCas9-HF1": 5409,
+          "AsCas12a": 490,
+          "LwaCas13a": 24523
+        }
+      }
+    },
+    "sources": [
+      {
+        "anchor": "crispr/crispor-v3.1.py#('NGG','NGG - Streptococcus Pyogenes')",
+        "digest": "aaa4d8f362af255f76127e58b5838e8ee199db533b4a228448811cc45b5efa37"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Seq.py#def reverse_complement(sequence, inplace=False):",
+        "digest": "e96225e95b41df786a60501814ecafab89b74a07ec8eedc388001bdf45e80e3f"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#CGCGCGTTTCGGTGATGACGGTGAAAACCTCTGACACATGCAGCTCCCGGAGACGGTCACAGCTTGTCTGTAAGCGGATGCC",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#LOCUS       NC_001699               5130 bp    DNA     circular VRL",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      },
+      {
+        "anchor": "inputs/AF071878.1.gb#LOCUS       AF071878                1993 bp    DNA     circular VRL",
+        "digest": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f"
+      },
+      {
+        "anchor": "inputs/NG_007400.1.gb#LOCUS       NG_007400              24544 bp    DNA     linear   PRI 15-OCT-2024",
+        "digest": "4f39bbd3b9ff111dbd7d56aa4b0e077307203b4a962dc8c30e3304beb4ffb71c"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CR-2",
+    "statement": "For every guide the app returns, on either strand and for every Cas type, the reported `sequence` equals the protospacer re-extracted from the raw input BY INDEX at the reported `position`: target[position : position+L] on the plus strand, and Biopython's reverse complement of that same slice on the minus strand. `position` is the leftmost plus-strand index of the protospacer footprint on both strands.",
+    "numeric": false,
+    "parameters": {
+      "L": "len(guide.sequence)",
+      "plus": "target[position : position+L] == sequence",
+      "minus": "reverse_complement(target[position : position+L]) == sequence",
+      "scope": "every guide of every (input, cas_type) pair with max_guides=50"
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Seq.py#def reverse_complement(sequence, inplace=False):",
+        "digest": "e96225e95b41df786a60501814ecafab89b74a07ec8eedc388001bdf45e80e3f"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#CGCGCGTTTCGGTGATGACGGTGAAAACCTCTGACACATGCAGCTCCCGGAGACGGTCACAGCTTGTCTGTAAGCGGATGCC",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#LOCUS       NC_001699               5130 bp    DNA     circular VRL",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      },
+      {
+        "anchor": "inputs/AF071878.1.gb#LOCUS       AF071878                1993 bp    DNA     circular VRL",
+        "digest": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f"
+      },
+      {
+        "anchor": "inputs/NG_007400.1.gb#LOCUS       NG_007400              24544 bp    DNA     linear   PRI 15-OCT-2024",
+        "digest": "4f39bbd3b9ff111dbd7d56aa4b0e077307203b4a962dc8c30e3304beb4ffb71c"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CR-3",
+    "statement": "The returned `sequence` is the protospacer and excludes the PAM. Its length equals the guide length in force, and no base of the PAM lies inside the half-open footprint [position, position+L): for a 3'-PAM nuclease the PAM occupies [position+L, position+L+3) on the guide's own strand, for a 5'-PAM nuclease it occupies the four bases immediately 5' of the footprint. This is the invariant #53 broke by letting the PAM's N be captured as the guide's last base.",
+    "numeric": false,
+    "parameters": {
+      "pam_length": {
+        "SpCas9": 3,
+        "SpCas9-HF1": 3,
+        "AsCas12a": 4,
+        "LwaCas13a": 0
+      },
+      "pam_side": {
+        "SpCas9": "3'",
+        "SpCas9-HF1": "3'",
+        "AsCas12a": "5'",
+        "LwaCas13a": "none"
+      },
+      "check": "the PAM slice and the guide slice must be disjoint, and sequence must not contain the PAM bases at either end by construction"
+    },
+    "sources": [
+      {
+        "anchor": "crispr/crispor-v3.1.py#('NGG','NGG - Streptococcus Pyogenes')",
+        "digest": "aaa4d8f362af255f76127e58b5838e8ee199db533b4a228448811cc45b5efa37"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Seq.py#def reverse_complement(sequence, inplace=False):",
+        "digest": "e96225e95b41df786a60501814ecafab89b74a07ec8eedc388001bdf45e80e3f"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#CGCGCGTTTCGGTGATGACGGTGAAAACCTCTGACACATGCAGCTCCCGGAGACGGTCACAGCTTGTCTGTAAGCGGATGCC",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#LOCUS       NC_001699               5130 bp    DNA     circular VRL",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      },
+      {
+        "anchor": "inputs/AF071878.1.gb#LOCUS       AF071878                1993 bp    DNA     circular VRL",
+        "digest": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f"
+      },
+      {
+        "anchor": "inputs/NG_007400.1.gb#LOCUS       NG_007400              24544 bp    DNA     linear   PRI 15-OCT-2024",
+        "digest": "4f39bbd3b9ff111dbd7d56aa4b0e077307203b4a962dc8c30e3304beb4ffb71c"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CR-4",
+    "statement": "The PAM re-extracted from the raw input by index obeys the grammar the app itself reports for that Cas type. SpCas9 and SpCas9-HF1: the three bases 3' of the protospacer match N-G-G (byte-pinned: CRISPOR's PAM table). AsCas12a: the four bases 5' of the protospacer match T-T-T-(A|C|G). LwaCas13a: `pam` is the literal \"none\", every returned guide is on the given sense strand, and every window is a candidate. UNVERIFIED IN PART: the primary sources for the 5' placement of the Cas12a PAM (Zetsche 2015, PMID 26422227 — \"the PAM for FnCpf1 is located upstream of the 5' end of the displaced strand of the protospacer and has the sequence 5'-TTN\") and for LwaCas13a having no PFS (Abudayyeh 2017, PMID 28976959 — \"no significant PFS motif for LwaCas13a\") are PMC author manuscripts released for text mining and fair use only, so they are cited and not vendored; their bytes are not pinned. The app's TTTV is also a narrowing of the literature's TTTN, a design convention rather than a claim about what the nuclease cuts, so the app is held to its own TTTV claim and not to TTTN.",
+    "numeric": false,
+    "parameters": {
+      "pam_regex": {
+        "SpCas9": "[ACGTN]GG",
+        "SpCas9-HF1": "[ACGTN]GG",
+        "AsCas12a": "TTT[ACG]",
+        "LwaCas13a": null
+      },
+      "reported_pam_literal": {
+        "SpCas9": "NGG",
+        "SpCas9-HF1": "NGG",
+        "AsCas12a": "TTTV",
+        "LwaCas13a": "none"
+      },
+      "byte_pinned": [
+        "SpCas9 NGG"
+      ],
+      "cited_not_pinned": [
+        "AsCas12a 5' PAM placement (PMID 26422227)",
+        "LwaCas13a absence of a PFS (PMID 28976959)"
+      ]
+    },
+    "sources": [
+      {
+        "anchor": "crispr/crispor-v3.1.py#('NGG','NGG - Streptococcus Pyogenes')",
+        "digest": "aaa4d8f362af255f76127e58b5838e8ee199db533b4a228448811cc45b5efa37"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Seq.py#def reverse_complement(sequence, inplace=False):",
+        "digest": "e96225e95b41df786a60501814ecafab89b74a07ec8eedc388001bdf45e80e3f"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#CGCGCGTTTCGGTGATGACGGTGAAAACCTCTGACACATGCAGCTCCCGGAGACGGTCACAGCTTGTCTGTAAGCGGATGCC",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#LOCUS       NC_001699               5130 bp    DNA     circular VRL",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      },
+      {
+        "anchor": "inputs/AF071878.1.gb#LOCUS       AF071878                1993 bp    DNA     circular VRL",
+        "digest": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f"
+      },
+      {
+        "anchor": "inputs/NG_007400.1.gb#LOCUS       NG_007400              24544 bp    DNA     linear   PRI 15-OCT-2024",
+        "digest": "4f39bbd3b9ff111dbd7d56aa4b0e077307203b4a962dc8c30e3304beb4ffb71c"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CR-5",
+    "statement": "Minus-strand indices map correctly under reverse complement. A guide the app reports at (position p, strand '-') with length L must satisfy: 0 <= p and p+L <= len(target); reverse_complement(target[p:p+L]) equals the reported sequence; and the guide's PAM lies on the far side of the footprint from where a plus-strand guide's would — target[p-3:p] reverse-complemented for an NGG nuclease, target[p+L:p+L+4] reverse-complemented for a TTTV nuclease — so the whole site, PAM included, fits inside the molecule. This is the invariant #64.2 broke by not scanning the minus strand for Cas12a at all.",
+    "numeric": false,
+    "parameters": {
+      "minus_strand_pam_slice": {
+        "NGG": "reverse_complement(target[p-3 : p])",
+        "TTTV": "reverse_complement(target[p+L : p+L+4])"
+      },
+      "bounds": "a minus-strand NGG site cannot be reported at p < 3; a minus-strand TTTV site cannot be reported at p > len(target)-L-4"
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Seq.py#def reverse_complement(sequence, inplace=False):",
+        "digest": "e96225e95b41df786a60501814ecafab89b74a07ec8eedc388001bdf45e80e3f"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#CGCGCGTTTCGGTGATGACGGTGAAAACCTCTGACACATGCAGCTCCCGGAGACGGTCACAGCTTGTCTGTAAGCGGATGCC",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#LOCUS       NC_001699               5130 bp    DNA     circular VRL",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      },
+      {
+        "anchor": "inputs/AF071878.1.gb#LOCUS       AF071878                1993 bp    DNA     circular VRL",
+        "digest": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f"
+      },
+      {
+        "anchor": "inputs/NG_007400.1.gb#LOCUS       NG_007400              24544 bp    DNA     linear   PRI 15-OCT-2024",
+        "digest": "4f39bbd3b9ff111dbd7d56aa4b0e077307203b4a962dc8c30e3304beb4ffb71c"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CR-6",
+    "statement": "`guide_length` is honoured when the caller sets it, and each nuclease's canonical length applies when the caller does not. Every returned guide's sequence has exactly that length, for every Cas type and both strands, and the candidate count changes accordingly. This is the invariant #64.3 broke by hardcoding 20/23/22 per branch.",
+    "numeric": true,
+    "parameters": {
+      "canonical_when_unset": {
+        "SpCas9": 20,
+        "SpCas9-HF1": 20,
+        "AsCas12a": 23,
+        "LwaCas13a": 22
+      },
+      "explicit_range": "17..24 inclusive (CRISPRDesignRequest.guide_length, ge=17 le=24)",
+      "check": "for every L in 17..24 and every cas type, all returned guides have len(sequence) == L and total_candidates equals the independent scan at that L"
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/Seq.py#def reverse_complement(sequence, inplace=False):",
+        "digest": "e96225e95b41df786a60501814ecafab89b74a07ec8eedc388001bdf45e80e3f"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#CGCGCGTTTCGGTGATGACGGTGAAAACCTCTGACACATGCAGCTCCCGGAGACGGTCACAGCTTGTCTGTAAGCGGATGCC",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#LOCUS       NC_001699               5130 bp    DNA     circular VRL",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      },
+      {
+        "anchor": "inputs/AF071878.1.gb#LOCUS       AF071878                1993 bp    DNA     circular VRL",
+        "digest": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f"
+      },
+      {
+        "anchor": "inputs/NG_007400.1.gb#LOCUS       NG_007400              24544 bp    DNA     linear   PRI 15-OCT-2024",
+        "digest": "4f39bbd3b9ff111dbd7d56aa4b0e077307203b4a962dc8c30e3304beb4ffb71c"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CR-7",
+    "statement": "The reported `gc_content` is the GC percentage of the reported `sequence`, recomputed independently with Biopython's gc_fraction and rounded to one decimal.",
+    "numeric": true,
+    "parameters": {
+      "formula": "round(gc_fraction(sequence, ambiguous='remove') * 100, 1)",
+      "tolerance": 0.0
+    },
+    "sources": [
+      {
+        "anchor": "biopython-1.85/Bio/SeqUtils/__init__.py#def gc_fraction(seq, ambiguous=\"remove\"):",
+        "digest": "bd6e3676fdbc01c88e19313f1babf65c96697019460f1e73e1d136392dcf7d6a"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#CGCGCGTTTCGGTGATGACGGTGAAAACCTCTGACACATGCAGCTCCCGGAGACGGTCACAGCTTGTCTGTAAGCGGATGCC",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#LOCUS       NC_001699               5130 bp    DNA     circular VRL",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      },
+      {
+        "anchor": "inputs/AF071878.1.gb#LOCUS       AF071878                1993 bp    DNA     circular VRL",
+        "digest": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f"
+      },
+      {
+        "anchor": "inputs/NG_007400.1.gb#LOCUS       NG_007400              24544 bp    DNA     linear   PRI 15-OCT-2024",
+        "digest": "4f39bbd3b9ff111dbd7d56aa4b0e077307203b4a962dc8c30e3304beb4ffb71c"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CR-8",
+    "statement": "The app names its on-target score after Doench et al. 2014 Rule Set 1 (backend/routers/crispr.py `_doench_rule_set1_score`) and surfaces it to the user as the \"On-target\" column of the CRISPR panel. A score carrying that name must reproduce the pinned Rule Set 1 definition: intercept 0.59763615, the 70 singleton and dinucleotide weights of `doenchParams`, the GC term abs(10-gcCount) times -0.2026259 (gcCount<=10) or -0.1665878 (gcCount>10), and the logistic 1/(1+exp(-score)), evaluated on the 30mer the model is defined on — 4 nt of 5' context, the 20 nt protospacer, the 3 nt PAM, 3 nt of 3' context. Two consequences are pinned as the failure criteria, so the requirement does not turn on floating-point equality alone: (a) Rule Set 1 depends on the PAM and both flanks, so any score computed from the 20 nt protospacer alone cannot be it; (b) over the 326 SpCas9 sites of full-length pUC19 the app's ordering must agree with Rule Set 1's well enough for max_guides to select the same guides — Spearman rho >= 0.8 and at least 5 of the pinned top 10 shared.",
+    "numeric": true,
+    "parameters": {
+      "input": "gx/corpus/inputs/puc19_L09137.2.txt",
+      "cas_type": "SpCas9",
+      "guide_length": 20,
+      "scorable_sites": 326,
+      "rs1_30mer": "4 nt 5' context + 20 nt protospacer + 3 nt PAM + 3 nt 3' context",
+      "intercept": 0.59763615,
+      "gc_low": -0.2026259,
+      "gc_high": -0.1665878,
+      "min_spearman_rho": 0.8,
+      "min_top10_overlap": 5,
+      "rs1_best_guide": "GTAACAGGATTAGCAGAGCG",
+      "rs1_best_score": 0.9152
+    },
+    "sources": [
+      {
+        "anchor": "crispr/crisporEffScores-v3.1.py#doenchParams = [",
+        "digest": "2b6b589db6e3ef4a2433b3a93e657f2e61235f0ad593aa3007a3cb14e46c12e0"
+      },
+      {
+        "anchor": "crispr/crisporEffScores-v3.1.py#Input is a 30mer: 4bp 5', 20bp guide, 3bp PAM, 3bp 5'",
+        "digest": "2b6b589db6e3ef4a2433b3a93e657f2e61235f0ad593aa3007a3cb14e46c12e0"
+      },
+      {
+        "anchor": "crispr/crisporEffScores-v3.1.py#intercept =  0.59763615",
+        "digest": "2b6b589db6e3ef4a2433b3a93e657f2e61235f0ad593aa3007a3cb14e46c12e0"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Seq.py#def reverse_complement(sequence, inplace=False):",
+        "digest": "e96225e95b41df786a60501814ecafab89b74a07ec8eedc388001bdf45e80e3f"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#CGCGCGTTTCGGTGATGACGGTGAAAACCTCTGACACATGCAGCTCCCGGAGACGGTCACAGCTTGTCTGTAAGCGGATGCC",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CR-9",
+    "statement": "One field, one scale. `on_target_score` is a single field of a single GuideRNA model, coloured by one set of thresholds in the GUI (>=0.6 green, >=0.4 amber, else red) and exported under one TSV column. For any guide the app returns from /crispr/design, the number in that field must equal what the app's own /crispr/score_guide returns for the same sequence. A design call that scores AsCas12a and LwaCas13a guides with a different function from the one /crispr/score_guide uses puts two incomparable scales in one column.",
+    "numeric": false,
+    "parameters": {
+      "check": "design(...).guides[i].on_target_score == score_guide(guides[i].sequence)['on_target_score'] for every cas type",
+      "gui_thresholds": {
+        "green": ">= 0.6",
+        "amber": ">= 0.4",
+        "red": "< 0.4"
+      },
+      "gui_reference": "gui/panels/crispr_panel.py — the On-target column and its row colouring"
+    },
+    "sources": [
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#CGCGCGTTTCGGTGATGACGGTGAAAACCTCTGACACATGCAGCTCCCGGAGACGGTCACAGCTTGTCTGTAAGCGGATGCC",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#LOCUS       NC_001699               5130 bp    DNA     circular VRL",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      },
+      {
+        "anchor": "inputs/AF071878.1.gb#LOCUS       AF071878                1993 bp    DNA     circular VRL",
+        "digest": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f"
+      },
+      {
+        "anchor": "inputs/NG_007400.1.gb#LOCUS       NG_007400              24544 bp    DNA     linear   PRI 15-OCT-2024",
+        "digest": "4f39bbd3b9ff111dbd7d56aa4b0e077307203b4a962dc8c30e3304beb4ffb71c"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CR-10",
+    "statement": "`max_guides` must select among the candidates, not collapse onto one locus. When the app searches a full-length input and reports thousands of candidates but shows the user only max_guides of them, the shown set must contain at least two mutually non-overlapping sites — otherwise the panel reports 'N guides shown (of M candidates)' while in fact offering one target window in max_guides shifted copies. Pinned as the sharpest case: LwaCas13a on the 24,544 bp COL1A1 record searches 24,523 windows.",
+    "numeric": true,
+    "parameters": {
+      "input": "gx/corpus/inputs/NG_007400.1.gb",
+      "cas_type": "LwaCas13a",
+      "guide_length": 22,
+      "max_guides": 10,
+      "total_candidates": 24523,
+      "min_non_overlapping_pairs": 1,
+      "overlap_definition": "two guides overlap when abs(pos_a - pos_b) < guide_length",
+      "also_checked": [
+        {
+          "input": "gx/corpus/inputs/puc19_L09137.2.txt",
+          "cas_type": "LwaCas13a",
+          "total_candidates": 2665
+        },
+        {
+          "input": "gx/corpus/inputs/NG_007400.1.gb",
+          "cas_type": "AsCas12a",
+          "total_candidates": 490
+        }
+      ]
+    },
+    "sources": [
+      {
+        "anchor": "inputs/NG_007400.1.gb#LOCUS       NG_007400              24544 bp    DNA     linear   PRI 15-OCT-2024",
+        "digest": "4f39bbd3b9ff111dbd7d56aa4b0e077307203b4a962dc8c30e3304beb4ffb71c"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#CGCGCGTTTCGGTGATGACGGTGAAAACCTCTGACACATGCAGCTCCCGGAGACGGTCACAGCTTGTCTGTAAGCGGATGCC",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CR-11",
+    "statement": "`specificity_score` is presented to the user as an MIT score — the CRISPR panel's off-target checkbox reads 'Scan the target sequence for near-match sites and score guide specificity (MIT)' — and backend/crispr_offtarget.py cites Hsu et al. 2013 and carries that paper's 20 position-specific weights. The defining property of that score is position dependence: a mismatch in the PAM-proximal seed (protospacer position 20, weight 0.583) is far more damaging to an off-target's viability than a PAM-distal one (position 1, weight 0.000). The app's specificity_score must therefore differ between two references that place a guide's single 1-mismatch off-target at those two positions. Pinned from the transcribed definition: hit score 41.7 and Sguide 70.6 for the position-20 mismatch, hit score 100.0 and Sguide 50.0 for the position-1 mismatch.",
+    "numeric": true,
+    "parameters": {
+      "guide": "ACGTACGTAAGGCCTTGACA",
+      "guide_length": 20,
+      "cas_family": "cas9",
+      "max_mismatches": 3,
+      "carrier": "TTTTTT + <20 nt protospacer> + AGG + TTTTTT — one NGG site per reference, flanks that form no second site",
+      "expected": {
+        "mismatch_at_position_20": {
+          "hit_score": 41.7,
+          "specificity_score": 70.6
+        },
+        "mismatch_at_position_1": {
+          "hit_score": 100.0,
+          "specificity_score": 50.0
+        }
+      },
+      "aggregate": "calcMitGuideScore: 100/(100+hitSum), rescaled to 0..100",
+      "weights_index": "index 0 is protospacer position 1 (PAM-distal 5'); index 19 is position 20 (PAM-proximal seed)"
+    },
+    "sources": [
+      {
+        "anchor": "crispr/crispor-v3.1.py#hitScoreM = [0,0,0.014,0,0,0.395,0.317,0,0.389,0.079,0.445,0.508,0.613,0.851,0.732,0.828,0.615,0.804,0.685,0.583]",
+        "digest": "aaa4d8f362af255f76127e58b5838e8ee199db533b4a228448811cc45b5efa37"
+      },
+      {
+        "anchor": "crispr/crispor-v3.1.py#def calcHitScore(string1,string2):",
+        "digest": "aaa4d8f362af255f76127e58b5838e8ee199db533b4a228448811cc45b5efa37"
+      },
+      {
+        "anchor": "crispr/crispor-v3.1.py#def calcMitGuideScore(hitSum):",
+        "digest": "aaa4d8f362af255f76127e58b5838e8ee199db533b4a228448811cc45b5efa37"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CR-12",
+    "statement": "SpCas9-HF1 is offered as a distinct nuclease in the CRISPR panel's Cas-type list and described there as 'NGG PAM · high fidelity · fewer off-targets'. Selecting it must therefore change something the user can see: for the same target with off-target checking on, the SpCas9-HF1 response must not be field-for-field identical to the SpCas9 response. Either the specificity model differs, or the option is a label over the same computation and the description is false.",
+    "numeric": false,
+    "parameters": {
+      "inputs": [
+        "gx/corpus/inputs/puc19_L09137.2.txt",
+        "gx/corpus/inputs/NG_007400.1.gb"
+      ],
+      "check_off_targets": true,
+      "max_guides": 10,
+      "gui_reference": "gui/panels/crispr_panel.py CAS_INFO['SpCas9-HF1'] == 'NGG PAM · high fidelity · fewer off-targets'",
+      "compared_fields": "the full GuideRNA model dump of every returned guide, plus total_candidates"
+    },
+    "sources": [
+      {
+        "anchor": "crispr/crispor-v3.1.py#('NGG','NGG - Streptococcus Pyogenes')",
+        "digest": "aaa4d8f362af255f76127e58b5838e8ee199db533b4a228448811cc45b5efa37"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#CGCGCGTTTCGGTGATGACGGTGAAAACCTCTGACACATGCAGCTCCCGGAGACGGTCACAGCTTGTCTGTAAGCGGATGCC",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      },
+      {
+        "anchor": "inputs/NG_007400.1.gb#LOCUS       NG_007400              24544 bp    DNA     linear   PRI 15-OCT-2024",
+        "digest": "4f39bbd3b9ff111dbd7d56aa4b0e077307203b4a962dc8c30e3304beb4ffb71c"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CR-13",
+    "statement": "The two CRISPR endpoints must agree on what is not a sequence. /crispr/design refuses a target containing any character outside ACGTN with HTTP 400 'Target sequence must be DNA (ACGTN only)'. /crispr/score_guide takes a guide of the same alphabet and must refuse the same way, rather than returning HTTP 200 with a GC percentage computed over the non-nucleotide characters and a categorical 'Good'/'Fair'/'Poor' recommendation. Same family as #87: one input, one verdict, across both endpoints of a capability.",
+    "numeric": false,
+    "parameters": {
+      "rejected_by_design": "any character outside ACGTN, e.g. 'ACGTACGTACGTACGTACG!'",
+      "score_guide_length_guard": "17..24 inclusive, already enforced",
+      "expected": "HTTP 4xx from /crispr/score_guide for a guide of legal length containing a non-ACGTN character"
+    },
+    "sources": [
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#CGCGCGTTTCGGTGATGACGGTGAAAACCTCTGACACATGCAGCTCCCGGAGACGGTCACAGCTTGTCTGTAAGCGGATGCC",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      }
+    ],
+    "outcome": "unverified"
+  },
+  {
+    "id": "CR-14",
+    "statement": "Origin-spanning sites on a circular molecule. Three of the four pinned inputs are circular (pUC19 a plasmid, NC_001699.1 and AF071878.1 complete circular genomes) and the app's own sequence model carries is_circular, which the restriction capability already honours. A guide site that runs through the origin of a circular molecule is a real site; designing against a plasmid must either find those sites or the capability must be reachable with the circularity the app already knows about. Pinned: the exact candidate counts the same grammar yields on the circle versus on the cut-open linear string.",
+    "numeric": true,
+    "parameters": {
+      "expected": {
+        "puc19_L09137.2": {
+          "linear": {
+            "SpCas9": 326,
+            "AsCas12a": 75
+          },
+          "circular": {
+            "SpCas9": 330,
+            "AsCas12a": 76
+          }
+        },
+        "NC_001699.1": {
+          "linear": {
+            "SpCas9": 541,
+            "AsCas12a": 256
+          },
+          "circular": {
+            "SpCas9": 543,
+            "AsCas12a": 257
+          }
+        },
+        "AF071878.1": {
+          "linear": {
+            "SpCas9": 320,
+            "AsCas12a": 62
+          },
+          "circular": {
+            "SpCas9": 325,
+            "AsCas12a": 62
+          }
+        }
+      },
+      "guide_length": {
+        "SpCas9": 20,
+        "AsCas12a": 23
+      },
+      "circular_scan": "every start index on the circle matched against the doubled sequence, each site counted once",
+      "note": "AF071878.1 AsCas12a is 62 either way — its origin junction happens to carry no TTTV site, which is why three molecules are pinned and not one"
+    },
+    "sources": [
+      {
+        "anchor": "crispr/crispor-v3.1.py#('NGG','NGG - Streptococcus Pyogenes')",
+        "digest": "aaa4d8f362af255f76127e58b5838e8ee199db533b4a228448811cc45b5efa37"
+      },
+      {
+        "anchor": "biopython-1.85/Bio/Seq.py#def reverse_complement(sequence, inplace=False):",
+        "digest": "e96225e95b41df786a60501814ecafab89b74a07ec8eedc388001bdf45e80e3f"
+      },
+      {
+        "anchor": "inputs/puc19_L09137.2.txt#CGCGCGTTTCGGTGATGACGGTGAAAACCTCTGACACATGCAGCTCCCGGAGACGGTCACAGCTTGTCTGTAAGCGGATGCC",
+        "digest": "356116fd7a575f5bf71f6f4cf25059fe049bd72566816691630d423dd9ab329b"
+      },
+      {
+        "anchor": "inputs/NC_001699.1.gb#LOCUS       NC_001699               5130 bp    DNA     circular VRL",
+        "digest": "6935cc5c717c934b1504a13d8a4c2f457c80adfbe7e9d0c16f1971a2d67a7dd0"
+      },
+      {
+        "anchor": "inputs/AF071878.1.gb#LOCUS       AF071878                1993 bp    DNA     circular VRL",
+        "digest": "f03eccea45a1b735d94141f8444af6990a1f6d4c109ae647f6f72442e0aa0e0f"
+      }
+    ],
+    "outcome": "unverified"
+  }
+]
