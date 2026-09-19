@@ -1,0 +1,22 @@
+{
+  "block": "gx-finding-adjudicate",
+  "contract": "oligolia-gx-tests",
+  "round": 2,
+  "capability": "coordinates",
+  "adjudication": "test-defect",
+  "why": "The sealed assertion requires EVERY surviving annotation to extract a byte string the pre-edit record already held, with no exemption for a feature whose own bases the edit changed - it omits the touched() guard its four siblings use (test_coords_edit_shift.py:60,76; test_coords_gui_edit.py:84,105,128), and its own docstring says 'downstream' while the assertion ranges over all features. CO-14 requires features 'shifted for the edit, the way the GUI's own edit path does via shift_annotations', and that function's contract is that a feature CONTAINING the edit grows with it ('those bases are still its bases'). For CO-14's pinned edit - insert 30 A's at position 3000 of NC_001699.1 - five of the 28 features strictly contain position 3000 and the app at d22ffc8 grows each correctly: source (0,5130)->(0,5160); prim_transcript - (2526,5115)->(2526,5145); gene - (2602,5013)->(2602,5043); CDS - [(4770,5013),(2602,4426)]->[(4800,5043),(2602,4456)]; exon - (2602,4426)->(2602,4456). Each post-edit extract is that feature's own pre-edit extract with the 30 inserted bases spliced in at the corresponding offset (reverse-complemented on the four minus-strand features; inside the second part of the join for the CDS), verified against Bio.SeqFeature.extract on the pinned bytes and against pinned sha256 digests. The other 23 features extract byte-identically and the file's other 13 assertions pass. Satisfying the sealed assertion would require dropping those five - which CO-14's own wording forbids, which drops the whole-plasmid source feature (1..5130) on every insertion, the loss #96 exists to fix, and which - simulated - leaves the saved record with 23 features instead of 28 so that test_coords_gui_edit.py:92, which pairs saved.features[i] with before[i] positionally, misaligns and reports 14 wrong features starting (1, 'rep_origin', '[0:12](+)'). The app is right; the round-1 assertion does not express CO-14.",
+  "supersedes": "gx/coords/test_coords_edit_endpoint.py::test_co_14_surviving_annotations_point_at_the_right_bases",
+  "supersedes_test_id": "gx-co-53",
+  "commit": "0703f5232b6642eb5032b1e9d1b4c08e80a8e08a",
+  "register": "gx/coords/r2/register.json",
+  "tests": "gx/coords/r2/tests.json",
+  "run_summary": "21 passed in 22.50s",
+  "requirements": ["CO2-1", "CO2-2", "CO2-3"],
+  "test_ids": ["gx-co2-1", "gx-co2-2", "gx-co2-3", "gx-co2-4", "gx-co2-5", "gx-co2-6", "gx-co2-7"],
+  "subject_commit": "d22ffc8",
+  "discrimination": {
+    "at_d22ffc8_number_96_fixed": "21 passed",
+    "at_d22ffc8_parent_number_96_unfixed": "21 failed"
+  },
+  "findings": []
+}
