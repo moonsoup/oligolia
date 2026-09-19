@@ -48,6 +48,14 @@ Steps 1–5 below still apply; a FIX now goes through these parties, not through
 - An issue with an open decision in it (e.g. #79's default buffer) is split: the mechanical half gets
   its own issue that can close; the decision stays on the original.
 - Remote tasks must pull/push with `refs/heads/main` while the stray `main` tag exists (#72).
+- **A party is busy until its dispatch task completes, not until its commit appears.** The fixer
+  pushes, then rebases/re-gates and posts its record; dispatching the next item on seeing the
+  commit put two fixer sessions in one working tree (#95/#96, 2026-09-18). Verify only after the
+  record exists — `rr_fix_verify` exits 3 ("nothing to verify") otherwise.
+- **Sealed gx rounds run one process each** (`node scripts/rr_gx.ts run --root <repo>`): every
+  round does `from conftest import ...`, so a bare `pytest gx/` collides at collection.
+- A corpus source with a licence that may not fit this MIT repo (e.g. CRISPOR, CC BY-NC / GPLv3)
+  is the owner's call before the round is sealed — sealing pins it.
 - Remote logged out: the owner's strategy is to **transfer this machine's login**, not a browser
   OAuth — `cd ~/Software/rockin-robin && python3 scripts/remote_instance_bootstrap.py transfer-auth
   --vps root@2.25.209.57 --ssh-key ~/.ssh/ies_hostinger_key --container claude-remote`. The browser
