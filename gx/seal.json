@@ -1,0 +1,26 @@
+{
+  "algo": "sha256",
+  "entries": [
+    {
+      "file": "gx/test_restriction_circular_origin.py",
+      "digest": "8259996634c9c98423ad2f89a21ae2e0c5cd45e991b70ce973e549ea021f4a0d"
+    },
+    {
+      "file": "gx/test_restriction_cut_convention.py",
+      "digest": "b02b3a683b5ce4ced036baf25bd4ed391aa9a6f734edbaa8bdd050675dd44ba5"
+    },
+    {
+      "file": "gx/test_restriction_digest_fragments.py",
+      "digest": "190eedd521847baff09ee3c6663427ab3c6a7cbfd1a2950c488db144c4698f7a"
+    },
+    {
+      "file": "gx/test_restriction_input_normalisation.py",
+      "digest": "1faf94e7b6fbc8d03ed9a822a45685a51474e373154870a15acbe3a4b898b55c"
+    },
+    {
+      "file": "gx/test_restriction_sites.py",
+      "digest": "759d0593e820a4393d6881d232598450d2416c71dbba13dd84cb2ec71bb87421"
+    }
+  ],
+  "digest": "3beb4638725a55e7a0db018ff8cb465d12c7b20a982a78642acd5d4074eda42c"
+}
