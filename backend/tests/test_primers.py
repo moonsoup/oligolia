@@ -1,6 +1,9 @@
 """Tests for PCR primer design and restriction enzyme analysis using real sequences."""
 
+from Bio import Restriction
 from fastapi.testclient import TestClient
+
+from ..routers import primers
 
 
 def test_design_primers_hbb(client: TestClient, test_template: str) -> None:
@@ -101,6 +104,35 @@ def test_restriction_sites_empty_template(client: TestClient) -> None:
     r = client.post("/primers/restriction_sites", json={"template": "AAAAAAAAAA"})
     assert r.status_code == 200
     assert r.json() == []
+
+
+def test_restriction_sites_finds_bottom_strand_site(client: TestClient, monkeypatch) -> None:
+    """A non-palindromic recognition sequence occurring only on the bottom
+    strand must still be reported, and must agree with /digest on how many
+    times the enzyme cuts (#89). BsaI (GGTCTC) is not shipped in the panel —
+    the panel is palindrome-only (#89) — so it is added for this test only,
+    exactly as the sealed gx regression does.
+    """
+    monkeypatch.setitem(primers.RESTRICTION_ENZYMES, "BsaI", Restriction.BsaI.site)
+    monkeypatch.setitem(primers._ENZYMES, "BsaI", Restriction.BsaI)
+
+    # Top strand has GAGACC (BsaI's reverse complement) at 10, and no GGTCTC.
+    # BsaI is Type IIS and cuts outside its recognition sequence, so on a
+    # linear template Bio.Restriction needs enough flanking bases beyond the
+    # site to place the cut; a bottom-strand match needs that flank on the
+    # 5' side (10 bases here — 4 is not enough for Bio.Restriction to find
+    # a cut at all, independent of this fix).
+    template = "A" * 10 + "GAGACC" + "A" * 20
+
+    sites = client.post("/primers/restriction_sites",
+                        json={"template": template, "enzymes": ["BsaI"]}).json()
+    bsai = next((s for s in sites if s["enzyme"] == "BsaI"), None)
+    assert bsai is not None
+    assert bsai["positions"] == [10]
+
+    cuts = client.post("/primers/digest",
+                       json={"template": template, "enzymes": ["BsaI"]}).json()["cut_positions"]
+    assert len(bsai["positions"]) == len(cuts)
 
 
 # ── Circular topology (issue #21) ─────────────────────────────────────────────

@@ -562,28 +562,53 @@ IUPAC = {"R": "[AG]", "Y": "[CT]", "S": "[GC]", "W": "[AT]",
          "K": "[GT]", "M": "[AC]", "B": "[CGT]", "D": "[AGT]",
          "H": "[ACT]", "V": "[ACG]", "N": "[ACGT]"}
 
+# IUPAC ambiguity-code complements (each code's base set complemented
+# base-by-base, e.g. R = {A,G} -> Y = {C,T}); used to search the bottom
+# strand of the top-strand template for non-palindromic recognition
+# sequences (#89, RE-3) without ever materialising the bottom strand.
+_IUPAC_COMPLEMENT = {
+    "A": "T", "T": "A", "G": "C", "C": "G",
+    "R": "Y", "Y": "R", "S": "S", "W": "W", "K": "M", "M": "K",
+    "B": "V", "V": "B", "D": "H", "H": "D", "N": "N",
+}
+
 
 def _pattern(recog: str) -> str:
     return "".join(IUPAC.get(c, c) for c in recog.upper())
 
 
+def _iupac_reverse_complement(recog: str) -> str:
+    return "".join(_IUPAC_COMPLEMENT[c] for c in reversed(recog.upper()))
+
+
 def _find_sites(template: str, recog: str, is_circular: bool) -> list[int]:
-    """0-indexed start positions of ``recog`` in ``template``.
+    """0-indexed start positions of ``recog`` on either strand of ``template``.
+
+    A recognition sequence can occur on the bottom strand without occurring on
+    the top strand; that shows up on the top strand as the sequence's reverse
+    complement, so both patterns are searched (RE-3, #89). Palindromic panel
+    sites (RE-2) have the same pattern on both strands and dedupe to a single
+    set of positions.
 
     When ``is_circular`` is set, also finds recognition sites that span the
     origin junction (last k-1 bases + first k-1 bases, k = recognition length),
     reporting them at their real start index near the end of the template.
     """
-    pattern = _pattern(recog)
-    positions = [m.start() for m in re.finditer(f"(?={pattern})", template)]
+    patterns = {_pattern(recog), _pattern(_iupac_reverse_complement(recog))}
+    positions = {
+        m.start()
+        for pattern in patterns
+        for m in re.finditer(f"(?={pattern})", template)
+    }
     k, n = len(recog), len(template)
     if is_circular and k > 1 and n >= k:
         wrap = template[-(k - 1):] + template[:k - 1]
-        for m in re.finditer(f"(?={pattern})", wrap):
-            off = m.start()
-            if off <= k - 2:  # starts in the tail => crosses the origin
-                positions.append(n - (k - 1) + off)
-    return sorted(set(positions))
+        for pattern in patterns:
+            for m in re.finditer(f"(?={pattern})", wrap):
+                off = m.start()
+                if off <= k - 2:  # starts in the tail => crosses the origin
+                    positions.add(n - (k - 1) + off)
+    return sorted(positions)
 
 
 class RestrictionRequest(BaseModel):
