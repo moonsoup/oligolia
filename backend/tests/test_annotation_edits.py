@@ -142,10 +142,18 @@ def test_reverse_complement_flips_the_strand() -> None:
 
 
 def test_reverse_complement_reverses_the_part_order() -> None:
-    """After flipping, the first exon in the new coordinates is the last one."""
+    """After flipping, the part list runs *downwards* in coordinates (#93).
+
+    This expectation used to read `[(60, 71), (90, 96)]` — ascending, on what is
+    now a minus-strand feature — and so locked in the defect #93 reports. Parts
+    are stored in the feature's own 5'-to-3' reading order, and for a minus-strand
+    `CompoundLocation` that means descending coordinates: the exon this feature
+    read first still reads first, it has just moved to `[90, 96)`. Reflecting each
+    interval preserves that order on its own; nothing extra reverses the list.
+    """
     spliced = _ann(4, 40, "cds", parts=[(4, 10), (29, 40)])
     kept = flip_annotations([spliced], seq_len=100)
-    assert kept[0].parts == [(60, 71), (90, 96)]
+    assert kept[0].parts == [(90, 96), (60, 71)]
     assert (kept[0].start, kept[0].end) == (60, 96)
 
 

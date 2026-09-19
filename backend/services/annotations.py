@@ -91,18 +91,29 @@ def flip_annotations(annotations: list[Annotation], seq_len: int) -> list[Annota
     """Map annotations onto the reverse complement of a `seq_len`-long sequence.
 
     A half-open interval `[s, e)` on the forward strand becomes
-    `[seq_len - e, seq_len - s)` on the reverse, the strand inverts, and a spliced
-    feature's parts come back in the opposite order — what was the first exon is
-    the last one in the new coordinates.
+    `[seq_len - e, seq_len - s)` on the reverse, and the strand inverts.
 
-    Applying this twice returns the original, which is how the mapping is checked
-    rather than reasoned about.
+    The **part list keeps its order** (#93). A `CompoundLocation`'s parts are
+    stored in the feature's own 5'-to-3' reading order, not in ascending
+    coordinate order — Biopython's INSDC writer spells the convention out: for a
+    minus-strand join it "expect[s] the CompoundLocation and its parts to all be
+    marked as strand == -1, and to be in the order 19:100 then 0:10". Reflecting
+    each interval through `seq_len - x` already preserves that reading order, so
+    reversing the list afterwards undid it: a spliced CDS came back with its exons
+    swapped, which is the same length, the same bases and the same strand, but a
+    different protein — and it reached the saved file with nothing to signal it.
+
+    Applying this twice returns the original, but that round trip is *not* what
+    checks the mapping: reversing a list twice restores it whether or not
+    reversing it was right in the first place. What pins it is that every feature
+    still extracts the same string, which is what
+    `backend/tests/test_reverse_complement_part_order_93.py` asserts against
+    `Bio.SeqRecord.reverse_complement(features=True)`.
     """
     flipped: list[Annotation] = []
 
     for ann in annotations:
         parts = [(seq_len - p_end, seq_len - p_start) for p_start, p_end in _parts_of(ann)]
-        parts.reverse()
         if ann.strand == Strand.PLUS:
             strand = Strand.MINUS
         elif ann.strand == Strand.MINUS:
