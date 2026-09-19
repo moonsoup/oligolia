@@ -90,5 +90,79 @@
       "why": "Convention-free form of the previous finding: /digest delegates to Bio.Restriction and therefore searches both strands, while /restriction_sites uses its own top-strand regex. Same enzyme, same template, two different answers about whether it cuts at all."
     }
   ],
-  "notes": "Environment: `make venv` cannot run in this container (python3.11-venv/ensurepip is absent), so backend/.venv was created as `python3 -m venv --system-site-packages --without-pip backend/.venv` over the system interpreter, which already has Biopython 1.85, FastAPI 0.115.6 and pytest 8.3.4. The pinned corpus was copied from that interpreter's dist-packages; MANIFEST.json records the paths. Tests were run with `PYTHONPATH=. backend/.venv/bin/python -m pytest gx/ -q -p no:cacheprovider` and need no network.\n\nScope note: the commit was rebased onto origin/main 0ab8a85 (another party landed #78/#84 and the 0.6.0 bump mid-round); the suite was re-run after the rebase with the identical 10-failed/52-passed result, and that is the run recorded here. `make check` is unaffected — gx/ is outside backend/tests/ and gui/, and `make lint` covers backend/ gui/ oligolia.py .claude/qa/ only. `ruff check gx/*.py` is clean; ruff flags one unused import inside the pinned corpus copy of Biopython's Restriction.py, which must stay byte-identical and is not linted by any project target.\n\nWhat passed, and so is now evidence rather than assumption: site starts and cut positions for all 24 panel enzymes on linear and circular pUC19; the cut convention (0-based, top strand, Bio position - 1, site start + fst5) for EcoRI/NdeI/SmaI/KpnI/PvuII; origin-spanning sites found exactly once across nine rotations; n cuts -> n+1 linear fragments and n circular fragments against Biopython's own catalyse(), including the 15-cut whole-panel digest; the ten no-site enzymes; overlapping same-enzyme and cross-enzyme sites; IUPAC expansion for AvaI (CYCGRG) and AvaII (GGWCC); reverse-strand mirror positions. Beyond the sealed tests I also fuzzed the app against index-derived and Bio.Restriction oracles (all 2686 rotations of pUC19 for six enzymes; 10000 random templates of length 4-30 across ten enzymes, linear and circular, checking site starts, cut positions, fragment sequences, length sums and circular overhang bases): zero mismatches. The core geometry is solid; every defect this round is at the input boundary or in cross-endpoint coherence.\n\nFor the orchestrator: gx/TRACE.md maps each gx-re-<n> id in tests.json to its pytest node id (test function names carry the RE-<n> requirement id, so a failing node id names its requirement directly). RE-3's two tests are the only ones that touch module state: the `panel_with` fixture monkeypatches backend.routers.primers.RESTRICTION_ENZYMES/_ENZYMES to add BsaI and restores them, because the shipped panel contains no non-palindromic enzyme to exercise the code path with. If a verifier judges that out of bounds for a round-1 seal, RE-3's finding downgrades from 'defect' to 'latent, guard the assumption' — RE-2 records the assumption it depends on. Nothing under backend/ or gui/ was modified."
+  "notes": "Environment: `make venv` cannot run in this container (python3.11-venv/ensurepip is absent), so backend/.venv was created as `python3 -m venv --system-site-packages --without-pip backend/.venv` over the system interpreter, which already has Biopython 1.85, FastAPI 0.115.6 and pytest 8.3.4. The pinned corpus was copied from that interpreter's dist-packages; MANIFEST.json records the paths. Tests were run with `PYTHONPATH=. backend/.venv/bin/python -m pytest gx/ -q -p no:cacheprovider` and need no network.\n\nScope note: the commit was rebased onto origin/main 0ab8a85 (another party landed #78/#84 and the 0.6.0 bump mid-round); the suite was re-run after the rebase with the identical 10-failed/52-passed result, and that is the run recorded here. `make check` is unaffected — gx/ is outside backend/tests/ and gui/, and `make lint` covers backend/ gui/ oligolia.py .claude/qa/ only. `ruff check gx/*.py` is clean; ruff flags one unused import inside the pinned corpus copy of Biopython's Restriction.py, which must stay byte-identical and is not linted by any project target.\n\nWhat passed, and so is now evidence rather than assumption: site starts and cut positions for all 24 panel enzymes on linear and circular pUC19; the cut convention (0-based, top strand, Bio position - 1, site start + fst5) for EcoRI/NdeI/SmaI/KpnI/PvuII; origin-spanning sites found exactly once across nine rotations; n cuts -> n+1 linear fragments and n circular fragments against Biopython's own catalyse(), including the 15-cut whole-panel digest; the ten no-site enzymes; overlapping same-enzyme and cross-enzyme sites; IUPAC expansion for AvaI (CYCGRG) and AvaII (GGWCC); reverse-strand mirror positions. Beyond the sealed tests I also fuzzed the app against index-derived and Bio.Restriction oracles (all 2686 rotations of pUC19 for six enzymes; 10000 random templates of length 4-30 across ten enzymes, linear and circular, checking site starts, cut positions, fragment sequences, length sums and circular overhang bases): zero mismatches. The core geometry is solid; every defect this round is at the input boundary or in cross-endpoint coherence.\n\nFor the orchestrator: gx/TRACE.md maps each gx-re-<n> id in tests.json to its pytest node id (test function names carry the RE-<n> requirement id, so a failing node id names its requirement directly). RE-3's two tests are the only ones that touch module state: the `panel_with` fixture monkeypatches backend.routers.primers.RESTRICTION_ENZYMES/_ENZYMES to add BsaI and restores them, because the shipped panel contains no non-palindromic enzyme to exercise the code path with. If a verifier judges that out of bounds for a round-1 seal, RE-3's finding downgrades from 'defect' to 'latent, guard the assumption' — RE-2 records the assumption it depends on. Nothing under backend/ or gui/ was modified.",
+  "seal": {
+    "file": "gx/seal.json",
+    "digest": "3beb4638725a55e7a0db018ff8cb465d12c7b20a982a78642acd5d4074eda42c",
+    "commit": "3957f9d",
+    "reproduced": "same 10 failures on macOS (orchestrator) and Linux (this run)"
+  },
+  "filed": [
+    {
+      "url": "https://github.com/moonsoup/oligolia/issues/86",
+      "title": "Sequences pasted with line numbers or CRLF shift the reported site positions: Restriction and Digest tabs disagree, template length is wrong, fragment 'sequences' contain digits and carriage returns",
+      "root_cause": "template normalisation strips only ' ' and '\\n', so digits/CR survive into the site finder's index space while Bio.Restriction searches the cleaned string",
+      "requirements": [
+        "RE-11",
+        "RE-12"
+      ],
+      "tests": [
+        "gx/test_restriction_input_normalisation.py::test_re_11_layout_characters_do_not_move_the_coordinates[genbank_origin]",
+        "gx/test_restriction_input_normalisation.py::test_re_11_layout_characters_do_not_move_the_coordinates[crlf]",
+        "gx/test_restriction_input_normalisation.py::test_re_11_fragment_sequences_are_nucleotides_only[genbank_origin]",
+        "gx/test_restriction_input_normalisation.py::test_re_11_fragment_sequences_are_nucleotides_only[crlf]",
+        "gx/test_restriction_input_normalisation.py::test_re_12_site_and_cut_endpoints_share_one_coordinate_system[genbank_origin]",
+        "gx/test_restriction_input_normalisation.py::test_re_12_site_and_cut_endpoints_share_one_coordinate_system[crlf]"
+      ],
+      "traced_to": [
+        "backend/routers/primers.py:597",
+        "backend/routers/primers.py:667"
+      ]
+    },
+    {
+      "url": "https://github.com/moonsoup/oligolia/issues/87",
+      "title": "Pasting FASTA with its '>' header crashes Digest with a raw 'Invalid character found in >PUC19…' error, while Restriction returns 200 with positions counted over the header",
+      "root_cause": "no IUPAC-alphabet guard on either endpoint: /digest 500s on the unhandled TypeError from FormattedSeq, /restriction_sites 200s with positions counted over the non-sequence string",
+      "requirements": [
+        "RE-13"
+      ],
+      "tests": [
+        "gx/test_restriction_input_normalisation.py::test_re_13_non_iupac_template_is_rejected_by_both_endpoints"
+      ],
+      "traced_to": [
+        "backend/routers/primers.py:670-672",
+        "backend/routers/primers.py:678",
+        "backend/routers/primers.py:593-611"
+      ]
+    },
+    {
+      "url": "https://github.com/moonsoup/oligolia/issues/88",
+      "title": "Double digest result changes with enzyme order: 'AvaI, KpnI' and 'KpnI, AvaI' report different overhangs for the same cut in the pUC19 MCS",
+      "root_cause": "overhangs keyed by top-strand cut position alone, so coincident cuts from two enzymes let the later list entry overwrite the earlier one's end chemistry",
+      "requirements": [
+        "RE-14"
+      ],
+      "tests": [
+        "gx/test_restriction_cut_convention.py::test_re_14_digest_is_independent_of_enzyme_order"
+      ],
+      "traced_to": [
+        "backend/routers/primers.py:680-685"
+      ]
+    },
+    {
+      "url": "https://github.com/moonsoup/oligolia/issues/89",
+      "title": "Restriction site search scans the top strand only, so a bottom-strand site is silently missed while Digest still reports its cut (latent for today's all-palindromic panel)",
+      "root_cause": "_find_sites scans the top strand only; latent for today's all-palindromic 24-enzyme panel (RE-2), user-visible the moment a non-palindromic enzyme joins it",
+      "requirements": [
+        "RE-3"
+      ],
+      "tests": [
+        "gx/test_restriction_sites.py::test_re_3_site_on_bottom_strand_is_found",
+        "gx/test_restriction_sites.py::test_re_3_site_count_matches_cut_count"
+      ],
+      "traced_to": [
+        "backend/routers/primers.py:568-584"
+      ]
+    }
+  ]
 }
