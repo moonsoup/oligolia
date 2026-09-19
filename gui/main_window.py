@@ -31,8 +31,27 @@ except ImportError:
     VERSION = "0.0.0"
 
 
+#: Set to 1/true/yes/on to suppress the *startup* update check. gui/conftest.py
+#: sets it for the whole GUI test session, so a test that forgets
+#: `check_updates=False` still makes no request (#84).
+NO_UPDATE_CHECK_ENV = "OLIGOLIA_NO_UPDATE_CHECK"
+
+
+def update_check_disabled_by_env() -> bool:
+    """Has the environment opted out of the startup update check? (#84)"""
+    return os.environ.get(NO_UPDATE_CHECK_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 class MainWindow(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, check_updates: bool = True) -> None:
+        """#84: `check_updates=False` builds the window without the startup check.
+
+        The default is unchanged — users still get the check on launch, and Help →
+        Check for Updates is unaffected either way. The opt-out exists because the
+        check is a live request from a QThread, and because an available update
+        raises a *modal* dialog that nothing can dismiss under
+        `QT_QPA_PLATFORM=offscreen`, which hangs an offscreen test run.
+        """
         super().__init__()
         self.setWindowTitle(f"Oligolia {VERSION} — Gene Editing Platform")
         self.resize(1400, 900)
@@ -42,6 +61,7 @@ class MainWindow(QMainWindow):
         self._build_status()
         self.setStyleSheet(DARK_STYLESHEET)
         self._update_checker: UpdateChecker | None = None
+        self._check_updates = check_updates and not update_check_disabled_by_env()
         self._start_update_check()
 
     # ── Menu ─────────────────────────────────────────────────────────────────
@@ -309,6 +329,11 @@ class MainWindow(QMainWindow):
 
     def _start_update_check(self) -> None:
         """Fire-and-forget background update check on startup."""
+        # Opted out (#84). The guard is here rather than only at the __init__ call
+        # site so that nothing — a subclass, a plugin, a future caller — can start
+        # a startup check on a window that was built without one.
+        if not self._check_updates:
+            return
         # Refuse rather than rebind a live QThread, which Qt aborts on (#54).
         if worker_busy(self, "_update_checker"):
             return
@@ -318,6 +343,13 @@ class MainWindow(QMainWindow):
         self._update_checker.start()
 
     def _on_update_available(self, info: object) -> None:
+        # This is the startup check's handler, and `dlg.exec()` below is modal:
+        # under the offscreen platform plugin there is nobody to dismiss it, so a
+        # test run verifying a commit older than the latest release would hang
+        # here forever (#84). Help → Check for Updates has its own handler and
+        # still shows the dialog.
+        if not self._check_updates:
+            return
         from .updater import UpdateInfo as _UI
         if not isinstance(info, _UI):
             return

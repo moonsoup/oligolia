@@ -54,13 +54,9 @@ def app() -> QApplication:
 def _window(app: QApplication, width: int, height: int, *, seeded: bool = True) -> MainWindow:
     """A shown MainWindow whose layout has run, with a sequence loaded."""
     # The startup update check opens a network connection from a QThread; no
-    # layout test needs it, and it would outlive the window.
-    original = MainWindow._start_update_check
-    MainWindow._start_update_check = lambda self: None
-    try:
-        win = MainWindow()
-    finally:
-        MainWindow._start_update_check = original
+    # layout test needs it, and it would outlive the window. Since #84 that is a
+    # constructor argument, so this no longer has to monkeypatch the class.
+    win = MainWindow(check_updates=False)
     win.resize(width, height)
     win.show()
     app.processEvents()

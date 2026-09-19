@@ -28,7 +28,9 @@ def app() -> QApplication:
 
 @pytest.fixture(scope="module")
 def window(app: QApplication) -> "mw.MainWindow":
-    return mw.MainWindow()
+    # No startup update check: this test is about a file dialog's save path, and
+    # the check is a live request whose dialog is modal (#84).
+    return mw.MainWindow(check_updates=False)
 
 
 @pytest.fixture()
