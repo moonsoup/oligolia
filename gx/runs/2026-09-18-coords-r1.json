@@ -186,6 +186,53 @@
       "why": "The end of the chain: the file a user downloads after editing through the API is a bare sequence with a LOCUS line. Upload an annotated plasmid, insert one base, download it, and every annotation is gone with no error and no warning."
     }
   ],
+  "seal": {
+    "file": "gx/coords/seal.json",
+    "digest": "2ef985275ccf556d2f29023f030d029fabb0a5e5d723ad3c33591a33765987f9",
+    "note": "Sealed by the orchestrator after tracing the register clean (14 requirements, every anchor resolving at its manifest digest). Re-run on macOS: the same 42 failed / 158 passed as the Linux run. The sealed tests must not be edited."
+  },
+  "filed": [
+    {
+      "url": "https://github.com/moonsoup/oligolia/issues/93",
+      "requirements": ["CO-12"],
+      "root_cause": "backend/services/annotations.py:104-105 — flip_annotations reflects each part through L-x (correct) and then calls parts.reverse() (wrong): a CompoundLocation's parts are already in 5'-to-3' reading order, which the reflection preserves.",
+      "title": "Reverse Complement silently reorders a spliced CDS's exons — the saved record encodes a different protein",
+      "severity": "high — silent, one-click, well-formed output, CDS no longer starts at its start codon",
+      "body": "gx/runs/2026-09-18-coords-r1-issue-93.md"
+    },
+    {
+      "url": "https://github.com/moonsoup/oligolia/issues/94",
+      "requirements": ["CO-5", "CO-6", "CO-7"],
+      "root_cause": "backend/formats/genbank.py:32-37 flattens a Bio location to (int, int) pairs and :95-96 rebuilds a plain FeatureLocation, so the position class (<, >), the compound operator (order vs join) and the remote accession (p.ref) are all lost in the same reader/writer pair.",
+      "title": "Saving GenBank drops partial <108..1007 boundaries, rewrites order() as join(), and turns a remote J00194.1:100..202 into local bases",
+      "merged_because": "one location writer, one flattening, three fields lost by it — fixing the flattening fixes all three",
+      "body": "gx/runs/2026-09-18-coords-r1-issue-94.md"
+    },
+    {
+      "url": "https://github.com/moonsoup/oligolia/issues/95",
+      "requirements": ["CO-10", "CO-11"],
+      "root_cause": "backend/services/annotations.py:74-76 — the 'contains the edit' branch is tested before the overlap branch, so an exact-span delete collapses to zero length and an interior edit keeps the feature with its qualifiers untouched.",
+      "title": "Deleting a feature's own bases leaves a zero-length 5073^5074 annotation instead of reporting it; editing inside a CDS keeps the old /translation",
+      "merged_because": "the same branch taking the same wrong turn for both edits; the fix is one decision about what that branch should do",
+      "body": "gx/runs/2026-09-18-coords-r1-issue-95.md"
+    },
+    {
+      "url": "https://github.com/moonsoup/oligolia/issues/96",
+      "requirements": ["CO-14"],
+      "root_cause": "backend/routers/sequences.py:137-145 constructs the stored Sequence with five fields, so annotations defaults to [] and is_circular to False; neither shift_annotations nor flip_annotations is called anywhere under backend/routers/.",
+      "title": "POST /sequences/{id}/edit stores the edited record with zero annotations and is_circular=False — the downloaded GenBank is a bare sequence",
+      "body": "gx/runs/2026-09-18-coords-r1-issue-96.md"
+    }
+  ],
+  "filed_notes": [
+    "Four issues for seven defective requirements. CO-12 filed first and labelled high severity in its opening line; it states that a flip-flip round trip cannot detect it (reversing twice restores the list whether or not reversing was correct), which is also what flip_annotations' own docstring at backend/services/annotations.py:98-99 relies on.",
+    "#57 (closed) is referenced from issue 94: its fix kept CompoundLocation parts through load and export — CO-2, CO-3 and CO-4 all hold — but everything about a location other than its integers was not kept. Same file, same two code paths, unfixed remainder rather than regression.",
+    "#59 (closed) is referenced from issues 95 and 96: the shifting it added is sound (CO-8 and CO-9 hold), but the case its own docstring names — a feature whose own bases were edited — is still kept and still false (95), and the router path was never given shift_annotations at all (96). Issue 93 notes that flip_annotations was added by #59 and that the part-order error came in with that fix.",
+    "#67 (closed) was checked and is not implicated: it covered VCF symbolic ALTs and .embl routing to read_genbank. The .embl half is fixed and holds under CO-13 — NCBI's GenBank and EBI's EMBL of AF071878.1 load to the same molecule, same sequence, length, topology, parts, strands and extracted subsequences over the five feature keys both archives carry.",
+    "Issue 93 flags that fixing CO-12 requires correcting the expectation in backend/tests/test_annotation_edits.py:144-149, which currently asserts the wrong part order for a flipped spliced feature. That is the only place in make check that locks in the current behaviour; the acceptance section says correct it, not delete it.",
+    "Each issue body carries the requirement statements verbatim from gx/coords/register.json, the pinned anchors with their sha256 digests, the sealed failing node ids as pytest reports them, the oracle-vs-app differential with the exact input, the traced file:line, the seal digest, and an Acceptance section. Every differential value quoted was re-derived against the sealed tests before filing.",
+    "No app code was changed and no sealed test was edited in this block."
+  ],
   "notes": [
     "Filename follows the contract's literal instruction (gx/runs/2026-09-18-coords-r1.json); the round was actually designed and run on 2026-09-19 against commit 4bb77b3.",
     "Requirements that HELD: CO-1 (1-based inclusive -> 0-based half-open on load, all 28 NC_001699.1 features), CO-2 (the coordinate round trip is the identity for both real records — every interval, part order, strand and extracted subsequence), CO-3 (join() parts survive load and export, including the origin-spanning join(5118..5130,1..12) and join(1975..1993,1..19) on circular records, with topology preserved), CO-4 (complement and complement(join) keep their strand and part order on load and export), CO-8 (an edit elsewhere leaves an untouched feature's bases byte-identical, for all four pinned edits), CO-9 (downstream parts shift by exactly delta, upstream parts do not move, re-derived by index), CO-13 (NCBI's GenBank and EBI's EMBL of AF071878.1 load to the same molecule). #57's join work and #59's shift work both hold up under the real records.",
