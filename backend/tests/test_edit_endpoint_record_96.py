@@ -144,6 +144,59 @@ def test_reverse_complement_flips_the_features_onto_the_other_strand(
     assert _spliced(result["result_seq"], cds["parts"], cds["strand"]) == SPLICED_CDS
 
 
+# ── a feature that contains the edit grows with it, and is not dropped ──────
+#
+# The one shape the tests above never exercise: an edit that lands *inside* a
+# feature rather than between features. `shift_annotations` keeps such a feature
+# and grows or shrinks it — "those bases are still its bases" — which is what
+# the GUI path does and therefore what CO-14 asks the endpoint to do. Dropping
+# it instead would read as green to a test that only asks whether survivors
+# extract pre-edit bases, while silently losing `source` (the whole molecule) on
+# every insertion — #96's own failure mode. These pin the keep-and-grow
+# semantics so `make check` catches a future switch to dropping.
+
+def test_a_feature_containing_the_insert_grows_instead_of_being_dropped(
+    client: TestClient,
+) -> None:
+    _edit(client, operation="insert", position=15, insert_seq="TTTTT")
+    stored = _stored(client, f"{SEQ_ID}_insert")
+    assert len(stored["annotations"]) == 3, stored["annotations"]
+    # `source 1..120` covers the whole plasmid, so every edit lands inside it.
+    assert [tuple(p) for p in _by_type(stored, "source")["parts"]] == [(0, 125)]
+
+
+def test_a_grown_exon_reads_its_own_bases_with_the_insert_spliced_in(
+    client: TestClient,
+) -> None:
+    result = _edit(client, operation="insert", position=15, insert_seq="TTTTT")
+    stored = _stored(client, f"{SEQ_ID}_insert")
+    cds = _by_type(stored, "CDS")
+    # 15 sits inside the first exon [10, 25), five bases in: that exon grows by
+    # the five inserted bases, the second exon shifts by the same five.
+    assert [tuple(p) for p in cds["parts"]] == [(10, 30), (55, 91)]
+    assert _spliced(result["result_seq"], cds["parts"], cds["strand"]) == (
+        SPLICED_CDS[:5] + "TTTTT" + SPLICED_CDS[5:]
+    )
+    # The untouched origin-spanning feature still reads byte-identical bases.
+    origin = _by_type(stored, "rep_origin")
+    assert _spliced(result["result_seq"], origin["parts"], origin["strand"]) == ORIGIN_SPANNING
+
+
+def test_a_feature_containing_a_deletion_shrinks_by_the_deleted_length(
+    client: TestClient,
+) -> None:
+    result = _edit(client, operation="delete", position=12, end_position=16)
+    stored = _stored(client, f"{SEQ_ID}_delete")
+    assert len(stored["annotations"]) == 3, stored["annotations"]
+    assert [tuple(p) for p in _by_type(stored, "source")["parts"]] == [(0, 116)]
+    cds = _by_type(stored, "CDS")
+    assert [tuple(p) for p in cds["parts"]] == [(10, 21), (46, 82)]
+    # Its own bases, minus the four deleted from offset 2.
+    assert _spliced(result["result_seq"], cds["parts"], cds["strand"]) == (
+        SPLICED_CDS[:2] + SPLICED_CDS[6:]
+    )
+
+
 # ── topology ────────────────────────────────────────────────────────────────
 
 def test_the_edited_plasmid_is_still_circular(client: TestClient) -> None:
