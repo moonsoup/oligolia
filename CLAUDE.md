@@ -53,6 +53,17 @@ e2e test, since there is no live website to drive.
 
 ## Development Rules
 
+0. **Never close an option; only open one when it's in scope.** Fixing something by removing a
+   function, a parameter, a flag, an enum value, an endpoint, a field or a supported input is
+   almost always the wrong fix here — something outside this repo may depend on it, and the
+   option you foreclose is routinely the one that solves the next problem. Add the new behaviour
+   *alongside* the old: a new optional parameter with the previous value as its default, a new
+   function beside the existing one, a new branch rather than a replaced one. Two live examples:
+   #81 added `tm_method` and the buffer fields with defaults that reproduce the previous numbers
+   exactly, and #83 exposed the router's existing `algorithm` option in the panel rather than
+   disabling the tab. This applies to prose and docs too — "X is not needed" reads as a
+   constraint to the next person. If two options genuinely cannot coexist, say which breaks and
+   why, and leave the choice to the owner rather than deciding it in a patch.
 1. **Lint before commit:** `ruff check backend/ gui/` (or the specific changed files). Never commit failing lint.
 2. **Push directly to `main`** — solo/small-team project, no PR review ceremony.
 3. **Versioning policy (Claude decides, per push to `main`):** bump `version.py`, commit
