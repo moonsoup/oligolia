@@ -30,6 +30,12 @@ class CRISPRDesignRequest(BaseModel):
     guide_length: int = Field(default=20, ge=17, le=24)
     max_guides: int = Field(default=10, ge=1, le=50)
     check_off_targets: bool = False
+    # Minimum distance, in bases, between two guides in the SHOWN set. `None`
+    # (the default) means "one guide length", i.e. the shown guides do not
+    # overlap each other while non-overlapping candidates remain. 0 restores
+    # the old behaviour of taking the top `max_guides` rows of the ranking
+    # regardless of where they sit (#100).
+    min_guide_spacing: int | None = Field(default=None, ge=0, le=10000)
     # Extra reference loci to scan for off-targets. The target sequence is
     # always scanned; these are additional (e.g. paralogs or genomic context).
     reference_sequences: list[str] = Field(default_factory=list)

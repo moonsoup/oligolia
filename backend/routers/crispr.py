@@ -71,6 +71,54 @@ PAM_LENGTH = {
 }
 
 
+def _select_spaced_guides(
+    ranked: list[GuideRNA], max_guides: int, min_spacing: int
+) -> list[GuideRNA]:
+    """Take ``max_guides`` guides off a ranked list without collapsing onto one locus.
+
+    ``max_guides`` used to be a plain slice of the ranking. That only selects
+    when the ranking actually separates the candidates: the Cas13 on-target
+    score takes two values and the GC tie-break is exactly 0.0 for every 50%-GC
+    window, so on a 24.5 kb record all 24,523 windows tie and a stable sort
+    hands back the first ten windows of the molecule — one target site in
+    ``max_guides`` shifted copies, 14 nt apart, while the panel claims it chose
+    them out of 24,523 (#100).
+
+    So the cut is made here instead, once, for every nuclease: walk the ranking
+    best-first and keep a guide only if it sits at least ``min_spacing`` bases
+    from every guide already kept. If fewer than ``max_guides`` sites are that
+    far apart (a short target, a sparse PAM), the remaining slots are filled
+    from the rest of the ranking, best first, so the shown count never shrinks.
+    The result is returned in rank order, exactly as before.
+
+    ``min_spacing`` of 0 (or less) disables the constraint and restores the
+    plain slice.
+    """
+    if max_guides <= 0:
+        return []
+    if min_spacing <= 0:
+        return ranked[:max_guides]
+
+    kept: list[int] = []
+    kept_positions: list[int] = []
+    for i, g in enumerate(ranked):
+        if len(kept) >= max_guides:
+            break
+        if all(abs(g.position - p) >= min_spacing for p in kept_positions):
+            kept.append(i)
+            kept_positions.append(g.position)
+
+    if len(kept) < max_guides:
+        already = set(kept)
+        for i in range(len(ranked)):
+            if len(kept) >= max_guides:
+                break
+            if i not in already:
+                kept.append(i)
+
+    return [ranked[i] for i in sorted(kept)]
+
+
 @router.post("/design", response_model=CRISPRDesignResponse)
 def design_guides(req: CRISPRDesignRequest) -> CRISPRDesignResponse:
     target = req.target_sequence.upper().replace(" ", "").replace("\n", "")
@@ -188,7 +236,12 @@ def design_guides(req: CRISPRDesignRequest) -> CRISPRDesignResponse:
     total = len(guides)
     # Sort by on-target score descending, then GC proximity to 50%
     guides.sort(key=lambda g: (-(g.on_target_score or 0), abs((g.gc_content or 0) - 50)))
-    guides = guides[:req.max_guides]
+    # ...then spread the shown set out over the molecule instead of slicing the
+    # ranking, which on a fully tied ranking returns the same site N times (#100).
+    spacing = (
+        req.min_guide_spacing if req.min_guide_spacing is not None else guide_length
+    )
+    guides = _select_spaced_guides(guides, req.max_guides, spacing)
 
     if req.check_off_targets and cas != CasType.CAS13:
         # Off-target scanning applies to PAM-directed DNA nucleases. Cas13
