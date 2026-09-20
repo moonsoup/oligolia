@@ -15,6 +15,7 @@ from PyQt6.QtGui import QColor
 from backend.services import NCBIClient, EnsemblClient, UniProtClient, KEGGClient
 from backend.models.sequence import Sequence, MoleculeType
 from ..workers import Worker, worker_busy
+from ..table_header import fitted_table
 
 
 DB_COLORS = {
@@ -76,7 +77,7 @@ class SearchPanel(QWidget):
         layout.addWidget(self._status)
 
         # Results table
-        self._table = QTableWidget()
+        self._table = fitted_table()
         self._table.setColumnCount(5)
         self._table.setHorizontalHeaderLabels(["Name", "Database", "Description", "Organism", "Accession"])
         self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)

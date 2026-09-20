@@ -31,6 +31,7 @@ from pydantic import ValidationError
 from backend.workflow import (
     StepStatus, StepType, Workflow, WorkflowStep, run_workflow, save_ogo, load_ogo,
 )
+from ..table_header import fitted_table
 
 # Steps exposed in the GUI. The "order" step and any vendor/live-ordering path
 # are deliberately excluded — that touches real money / external accounts and
@@ -139,7 +140,7 @@ class WorkflowPanel(QWidget):
         add_row.addWidget(btn_up); add_row.addWidget(btn_down); add_row.addWidget(btn_rm)
         steps_layout.addLayout(add_row)
 
-        self._steps_table = QTableWidget()
+        self._steps_table = fitted_table()
         self._steps_table.setColumnCount(2)
         self._steps_table.setHorizontalHeaderLabels(["Step", "Parameters (JSON)"])
         self._steps_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -162,7 +163,7 @@ class WorkflowPanel(QWidget):
         layout.addLayout(run_row)
 
         # ── Results ───────────────────────────────────────────────────────
-        self._results_table = QTableWidget()
+        self._results_table = fitted_table()
         self._results_table.setColumnCount(3)
         self._results_table.setHorizontalHeaderLabels(["Step", "Status", "Detail"])
         self._results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)

@@ -26,6 +26,7 @@ from backend.services.annotations import flip_annotations, spliced_annotations
 from gui.history import UndoStack
 from gui.panels.feature_colors import feature_color_map
 from gui.panels.plasmid_map import PlasmidMapWidget
+from gui.table_header import fitted_table
 import re
 
 # Edit operations that mutate the active sequence in place (and are undoable).
@@ -567,7 +568,7 @@ class SequencePanel(QWidget):
         self._feature_empty = QLabel("No features annotated")
         self._feature_empty.setObjectName("subheading")
         feat_layout.addWidget(self._feature_empty)
-        self._feature_table = QTableWidget()
+        self._feature_table = fitted_table()
         self._feature_table.setColumnCount(5)
         self._feature_table.setHorizontalHeaderLabels(
             ["Feature Type", "Strand", "Start", "End", "Qualifiers"])

@@ -29,6 +29,7 @@ from backend.models.structure import StructureRequest, StructureResult, Interact
 from backend.routers.structure import get_or_predict_structure, interaction_points as compute_interaction_points_endpoint
 from ..workers import Worker, worker_busy
 from ..plugins.structure_viewer_launcher import find_structure_viewer
+from ..table_header import fitted_table
 
 try:
     from version import GITHUB_OWNER, GITHUB_REPO
@@ -98,7 +99,7 @@ class StructurePanel(QWidget):
         self._badge.setObjectName("subheading")
         layout.addWidget(self._badge)
 
-        self._table = QTableWidget()
+        self._table = fitted_table()
         self._table.setColumnCount(5)
         self._table.setHorizontalHeaderLabels(
             ["Residue #", "Residue", "Chain", "Classification", "Relative SASA"]

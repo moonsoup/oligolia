@@ -8,13 +8,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton,
-    QLabel, QComboBox, QTabWidget, QTableWidget, QTableWidgetItem,
+    QLabel, QComboBox, QTabWidget, QTableWidgetItem,
     QProgressBar, QMessageBox,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor
 from Bio import Align
 from ..workers import Worker, worker_busy
+from ..table_header import fitted_table
 
 
 #: Columns per block. 60 is the ClustalW/BLAST convention and fits comfortably
@@ -220,7 +221,7 @@ class AlignmentPanel(QWidget):
 
         # Identity matrix
         msa_layout.addWidget(QLabel("Pairwise identity matrix (%):"))
-        self._identity_table = QTableWidget()
+        self._identity_table = fitted_table()
         self._identity_table.setMaximumHeight(150)
         msa_layout.addWidget(self._identity_table)
 

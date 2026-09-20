@@ -14,6 +14,7 @@ from PyQt6.QtGui import QColor
 
 from backend.formats import parse_vcf
 from backend.models.variant import Variant, VariantType
+from ..table_header import fitted_table
 
 
 TYPE_COLORS = {
@@ -54,7 +55,7 @@ class VariantsPanel(QWidget):
         layout.addLayout(toolbar)
 
         # Table
-        self._table = QTableWidget()
+        self._table = fitted_table()
         self._table.setColumnCount(8)
         self._table.setHorizontalHeaderLabels(
             ["CHROM", "POS", "REF", "ALT", "Type", "Gene", "Clinical Sig.", "gnomAD AF"]

@@ -15,7 +15,7 @@ from PyQt6.QtGui import QColor
 
 from backend.models.crispr import CRISPRDesignRequest, CasType
 from backend.routers.crispr import design_guides
-from ..table_header import fit_header_to_labels
+from ..table_header import fit_header_to_labels, fitted_table
 from ..workers import Worker, worker_busy
 
 
@@ -107,7 +107,7 @@ class CRISPRPanel(QWidget):
         layout.addWidget(self._status)
 
         # Results table
-        self._table = QTableWidget()
+        self._table = fitted_table()
         self._table.setColumnCount(9)
         self._table.setHorizontalHeaderLabels(
             ["#", "Guide Sequence (5'→3')", "PAM", "Position", "Strand", "GC%",

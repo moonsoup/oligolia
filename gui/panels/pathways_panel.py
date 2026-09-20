@@ -15,6 +15,7 @@ from PyQt6.QtCore import QUrl
 
 from backend.services import ReactomeClient, KEGGClient, STRINGClient
 from ..workers import Worker, worker_busy
+from ..table_header import fitted_table
 
 
 class PathwaysPanel(QWidget):
@@ -74,7 +75,7 @@ class PathwaysPanel(QWidget):
         # Reactome
         reactome_widget = QWidget()
         rl = QVBoxLayout(reactome_widget)
-        self._reactome_table = QTableWidget()
+        self._reactome_table = fitted_table()
         self._reactome_table.setColumnCount(5)
         self._reactome_table.setHorizontalHeaderLabels(
             ["Pathway", "Entities Found", "Entities Total", "p-value", "FDR"]
@@ -90,7 +91,7 @@ class PathwaysPanel(QWidget):
         # STRING
         string_widget = QWidget()
         sl = QVBoxLayout(string_widget)
-        self._string_table = QTableWidget()
+        self._string_table = fitted_table()
         self._string_table.setColumnCount(4)
         self._string_table.setHorizontalHeaderLabels(
             ["Protein A", "Protein B", "Score", "Interaction Type"]

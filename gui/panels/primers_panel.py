@@ -22,7 +22,7 @@ from backend.routers.primers import (
     describe_tm_conditions, describe_pair_tm,
 )
 from backend.sequence_text import normalize_template
-from ..table_header import fit_header_to_labels
+from ..table_header import fit_header_to_labels, fitted_table
 from ..workers import Worker, worker_busy
 
 # Presets stored in user config dir
@@ -150,7 +150,7 @@ class PrimersPanel(QWidget):
         self._pcr_status = QLabel(""); self._pcr_status.setObjectName("subheading")
         pcr_layout.addWidget(self._pcr_status)
 
-        self._pcr_table = QTableWidget()
+        self._pcr_table = fitted_table()
         self._pcr_table.setColumnCount(7)
         self._pcr_table.setHorizontalHeaderLabels(
             ["Pair", "Fwd sequence", "Rev sequence", "Product (bp)", "Fwd Tm", "Rev Tm", "Penalty"])
@@ -181,7 +181,7 @@ class PrimersPanel(QWidget):
         self._re_status = QLabel(""); self._re_status.setObjectName("subheading")
         re_layout.addWidget(self._re_status)
 
-        self._re_table = QTableWidget()
+        self._re_table = fitted_table()
         self._re_table.setColumnCount(4)
         self._re_table.setHorizontalHeaderLabels(["Enzyme", "Recognition", "Count", "Positions"])
         self._re_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
@@ -212,7 +212,7 @@ class PrimersPanel(QWidget):
         self._dig_status = QLabel(""); self._dig_status.setObjectName("subheading")
         dig_layout.addWidget(self._dig_status)
 
-        self._dig_table = QTableWidget()
+        self._dig_table = fitted_table()
         self._dig_table.setColumnCount(4)
         self._dig_table.setHorizontalHeaderLabels(["Fragment", "Size (bp)", "Start", "End"])
         self._dig_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
